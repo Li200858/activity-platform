@@ -1,7 +1,10 @@
 import axios from 'axios';
 import { useState, useEffect } from 'react';
 
-const API_BASE = 'http://localhost:5001/api';
+// 支持生产环境和开发环境
+const API_BASE = process.env.REACT_APP_API_URL 
+  ? `${process.env.REACT_APP_API_URL}/api`
+  : 'http://localhost:5001/api';
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);

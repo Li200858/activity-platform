@@ -203,7 +203,8 @@ function ClubMatters({ user }) {
                           <button 
                             onClick={() => {
                               const link = document.createElement('a');
-                              link.href = `http://localhost:5001/api/clubs/${club.id}/export?userID=${user.userID}`;
+                              const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+                              link.href = `${apiBase}/api/clubs/${club.id}/export?userID=${user.userID}`;
                               link.click();
                             }}
                             className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
@@ -366,7 +367,7 @@ function ClubMatters({ user }) {
                     <div key={key} className="border-l-4 border-blue-100 pl-4 py-1">
                       <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">{labels[key]}</label>
                       <div className="mt-1.5">
-                        <a href={`http://localhost:5001/uploads/${value}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-black hover:bg-blue-100 transition-all">
+                        <a href={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/uploads/${value}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-black hover:bg-blue-100 transition-all">
                           查看附件
                         </a>
                       </div>
@@ -402,7 +403,8 @@ function ClubMatters({ user }) {
                   <button 
                     onClick={() => {
                       const link = document.createElement('a');
-                      link.href = `http://localhost:5001/api/clubs/${selectedClubDetail.id}/export?userID=${user.userID}`;
+                      const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+                      link.href = `${apiBase}/api/clubs/${selectedClubDetail.id}/export?userID=${user.userID}`;
                       link.click();
                     }}
                     className="px-6 py-3 bg-green-600 text-white rounded-2xl font-black hover:bg-green-700 transition-all"

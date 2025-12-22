@@ -9,7 +9,9 @@ import FeedbackCollection from './pages/FeedbackCollection';
 import Login from './pages/Login';
 import { io } from 'socket.io-client';
 
-const socket = io('http://localhost:5001');
+// 支持生产环境和开发环境
+const SOCKET_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+const socket = io(SOCKET_URL);
 
 function App() {
   const { user, login, register, logout, copyID } = useAuth();
@@ -42,7 +44,7 @@ function App() {
   const checkNotifications = async () => {
     if (!user) return;
     try {
-      const res = await axios.get(`http://localhost:5001/api/notifications/${user.userID}`);
+      const res = await axios.get(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/notifications/${user.userID}`);
       setHasNotification(res.data.hasUnread);
     } catch (e) {}
   };
@@ -52,7 +54,7 @@ function App() {
     setSearchResults(null);
     if (tab === '审核状态' || tab === '反馈收集') {
       setHasNotification(false);
-      axios.post(`http://localhost:5001/api/notifications/read`, { userID: user.userID });
+      axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/notifications/read`, { userID: user.userID });
     }
   };
 

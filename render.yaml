@@ -1,0 +1,32 @@
+services:
+  # 后端服务
+  - type: web
+    name: activity-registration-backend
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: MONGODB_URI
+        sync: false  # 需要在Render控制台手动设置
+      - key: CORS_ORIGIN
+        sync: false  # 需要在Render控制台手动设置，格式: https://your-frontend.onrender.com
+    disk:
+      name: uploads-disk
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
+
+  # 前端静态站点
+  - type: web
+    name: activity-registration-frontend
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./client/build
+    envVars:
+      - key: REACT_APP_API_URL
+        sync: false  # 需要在Render控制台手动设置，格式: https://activity-registration-backend.onrender.com
+

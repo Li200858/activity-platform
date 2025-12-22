@@ -150,7 +150,8 @@ function ActivityMatters({ user }) {
                         <button 
                           onClick={() => {
                             const link = document.createElement('a');
-                            link.href = `http://localhost:5001/api/activities/${act.id}/export?userID=${user.userID}`;
+                            const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+                            link.href = `${apiBase}/api/activities/${act.id}/export?userID=${user.userID}`;
                             link.click();
                           }}
                           className="bg-green-600 text-white text-xs px-4 py-2 rounded font-bold hover:bg-green-700"

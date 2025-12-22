@@ -255,7 +255,7 @@ function AuditStatus({ user }) {
                       <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">{labels[key]}</label>
                       <div className="mt-1.5">
                         <a 
-                          href={`http://localhost:5001/uploads/${value}`} 
+                          href={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/uploads/${value}`} 
                           target="_blank" 
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-xl text-xs font-black hover:bg-blue-100 transition-all"
