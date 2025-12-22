@@ -3,13 +3,17 @@ import { api } from '../utils/api';
 import axios from 'axios';
 
 function ActivityMatters({ user }) {
-  const [view, setView] = useState('menu'); // menu, organize, register, detail, participants
+  const [view, setView] = useState('menu'); // menu, organize, register, detail, participants, regForm
   const [activities, setActivities] = useState([]);
   const [selectedActivity, setSelectedActivity] = useState(null);
   const [participants, setParticipants] = useState(null); // { activityName, participants: [] }
   const [formData, setFormData] = useState({
     name: '', capacity: '', time: '', location: '', description: '', flow: '', requirements: '',
     phaseTimePreparation: '', phaseTimeStart: '', phaseTimeInProgress: '', phaseTimeEnd: '',
+    phaseTimePreparationStart: '', phaseTimePreparationEnd: '',
+    phaseTimeStartStart: '', phaseTimeStartEnd: '',
+    phaseTimeInProgressStart: '', phaseTimeInProgressEnd: '',
+    phaseTimeEndStart: '', phaseTimeEndEnd: '',
     hasFee: false, feeAmount: ''
   });
   const [file, setFile] = useState(null);
@@ -41,14 +45,34 @@ function ActivityMatters({ user }) {
         return;
       }
       
-      const data = new FormData();
-      Object.keys(formData).forEach(key => {
-        if (key !== 'hasFee') {
-          data.append(key, formData[key]);
-        } else {
-          data.append(key, formData[key].toString());
+      // 格式化时间字段
+      const formatDateTime = (start, end) => {
+        if (!start && !end) return null;
+        if (start && end) {
+          const startDate = new Date(start);
+          const endDate = new Date(end);
+          return `${startDate.toLocaleString('zh-CN')} - ${endDate.toLocaleString('zh-CN')}`;
         }
-      });
+        return start ? new Date(start).toLocaleString('zh-CN') : new Date(end).toLocaleString('zh-CN');
+      };
+      
+      const data = new FormData();
+      data.append('name', formData.name);
+      data.append('capacity', formData.capacity);
+      data.append('time', formData.time);
+      data.append('location', formData.location);
+      data.append('description', formData.description);
+      data.append('flow', formData.flow);
+      data.append('requirements', formData.requirements);
+      data.append('hasFee', formData.hasFee.toString());
+      if (formData.feeAmount) data.append('feeAmount', formData.feeAmount);
+      
+      // 格式化阶段时间
+      data.append('phaseTimePreparation', formatDateTime(formData.phaseTimePreparationStart, formData.phaseTimePreparationEnd) || '');
+      data.append('phaseTimeStart', formatDateTime(formData.phaseTimeStartStart, formData.phaseTimeStartEnd) || '');
+      data.append('phaseTimeInProgress', formatDateTime(formData.phaseTimeInProgressStart, formData.phaseTimeInProgressEnd) || '');
+      data.append('phaseTimeEnd', formatDateTime(formData.phaseTimeEndStart, formData.phaseTimeEndEnd) || '');
+      
       data.append('organizerID', user.userID);
       if (file) data.append('file', file);
       if (paymentQRCode) data.append('paymentQRCode', paymentQRCode);
@@ -60,6 +84,10 @@ function ActivityMatters({ user }) {
       setFormData({
         name: '', capacity: '', time: '', location: '', description: '', flow: '', requirements: '',
         phaseTimePreparation: '', phaseTimeStart: '', phaseTimeInProgress: '', phaseTimeEnd: '',
+        phaseTimePreparationStart: '', phaseTimePreparationEnd: '',
+        phaseTimeStartStart: '', phaseTimeStartEnd: '',
+        phaseTimeInProgressStart: '', phaseTimeInProgressEnd: '',
+        phaseTimeEndStart: '', phaseTimeEndEnd: '',
         hasFee: false, feeAmount: ''
       });
       setFile(null);
@@ -149,10 +177,17 @@ function ActivityMatters({ user }) {
             ) : (
               <div className="grid gap-4">
                 {activities.map(act => (
-                  <div key={act.id} className="border p-4 rounded flex flex-col gap-4">
+                  <div 
+                    key={act.id} 
+                    className="border p-4 rounded flex flex-col gap-4 cursor-pointer hover:border-blue-400 hover:shadow-md transition-all"
+                    onClick={() => {
+                      setSelectedActivity(act);
+                      setView('detail');
+                    }}
+                  >
                     <div className="flex justify-between items-start">
                       <div>
-                        <h3 className="font-bold text-lg">{act.name}</h3>
+                        <h3 className="font-bold text-lg text-blue-600 hover:text-blue-800">{act.name}</h3>
                         <p className="text-sm text-gray-500">
                           {act.location}{act.time ? ' | ' + act.time : ''}
                           {act.organizerName && (
@@ -227,7 +262,7 @@ function ActivityMatters({ user }) {
                     <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
                       <strong>简介:</strong> {act.description}
                     </div>
-                    <div className="flex gap-2">
+                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                       <button 
                         onClick={() => {
                           setSelectedActivity(act);
@@ -245,7 +280,10 @@ function ActivityMatters({ user }) {
                       {/* 参与人员按钮 - 仅组织者和管理员可见 */}
                       {(act.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                         <button 
-                          onClick={() => fetchParticipants(act.id)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            fetchParticipants(act.id);
+                          }}
                           className="bg-purple-600 text-white text-xs px-4 py-2 rounded font-bold hover:bg-purple-700"
                         >
                           参与人员
@@ -254,7 +292,8 @@ function ActivityMatters({ user }) {
                       {/* 下载Excel按钮 - 仅组织者和管理员可见 */}
                       {(act.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                         <button 
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             const link = document.createElement('a');
                             const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
                             link.href = `${apiBase}/api/activities/${act.id}/export?userID=${user.userID}`;
@@ -268,7 +307,8 @@ function ActivityMatters({ user }) {
                       {/* 删除按钮 - 仅组织者和管理员可见 */}
                       {(act.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                         <button 
-                          onClick={async () => {
+                          onClick={async (e) => {
+                            e.stopPropagation();
                             if (!window.confirm('确定要删除此活动吗？所有参与者将自动解散。')) return;
                             try {
                               await api.delete(`/activities/${act.id}?userID=${user.userID}`);
@@ -304,42 +344,91 @@ function ActivityMatters({ user }) {
           
           <div className="border-t pt-4 mt-4">
             <h3 className="text-lg font-bold mb-3">活动阶段时间设置</h3>
-            <div className="grid gap-3">
-              <div>
-                <label className="block text-sm font-medium mb-1">活动准备阶段时间</label>
-                <input 
-                  type="text" 
-                  placeholder="例如：2024年12月25日14:00 或 2024年12月25日-2024年12月30日" 
-                  className="border p-2 rounded w-full" 
-                  onChange={e => setFormData({...formData, phaseTimePreparation: e.target.value})} 
-                />
+            <p className="text-xs text-gray-500 mb-3">请选择每个阶段的开始和结束时间，系统会自动判断当前处于哪个阶段</p>
+            <div className="grid gap-4">
+              <div className="border p-3 rounded bg-blue-50">
+                <label className="block text-sm font-medium mb-2">活动准备阶段</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">开始时间</label>
+                    <input 
+                      type="datetime-local" 
+                      className="border p-2 rounded w-full text-sm" 
+                      onChange={e => setFormData({...formData, phaseTimePreparationStart: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">结束时间</label>
+                    <input 
+                      type="datetime-local" 
+                      className="border p-2 rounded w-full text-sm" 
+                      onChange={e => setFormData({...formData, phaseTimePreparationEnd: e.target.value})} 
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">活动开始阶段时间</label>
-                <input 
-                  type="text" 
-                  placeholder="例如：2024年12月31日9:00 或 2024年12月31日上午" 
-                  className="border p-2 rounded w-full" 
-                  onChange={e => setFormData({...formData, phaseTimeStart: e.target.value})} 
-                />
+              <div className="border p-3 rounded bg-green-50">
+                <label className="block text-sm font-medium mb-2">活动开始阶段</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">开始时间</label>
+                    <input 
+                      type="datetime-local" 
+                      className="border p-2 rounded w-full text-sm" 
+                      onChange={e => setFormData({...formData, phaseTimeStartStart: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">结束时间</label>
+                    <input 
+                      type="datetime-local" 
+                      className="border p-2 rounded w-full text-sm" 
+                      onChange={e => setFormData({...formData, phaseTimeStartEnd: e.target.value})} 
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">活动中阶段时间</label>
-                <input 
-                  type="text" 
-                  placeholder="例如：2024年12月31日9:00-12:00 或 2024年12月31日全天" 
-                  className="border p-2 rounded w-full" 
-                  onChange={e => setFormData({...formData, phaseTimeInProgress: e.target.value})} 
-                />
+              <div className="border p-3 rounded bg-yellow-50">
+                <label className="block text-sm font-medium mb-2">活动中阶段</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">开始时间</label>
+                    <input 
+                      type="datetime-local" 
+                      className="border p-2 rounded w-full text-sm" 
+                      onChange={e => setFormData({...formData, phaseTimeInProgressStart: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">结束时间</label>
+                    <input 
+                      type="datetime-local" 
+                      className="border p-2 rounded w-full text-sm" 
+                      onChange={e => setFormData({...formData, phaseTimeInProgressEnd: e.target.value})} 
+                    />
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-sm font-medium mb-1">活动结束阶段时间</label>
-                <input 
-                  type="text" 
-                  placeholder="例如：2024年12月31日18:00 或 2024年12月31日晚上" 
-                  className="border p-2 rounded w-full" 
-                  onChange={e => setFormData({...formData, phaseTimeEnd: e.target.value})} 
-                />
+              <div className="border p-3 rounded bg-red-50">
+                <label className="block text-sm font-medium mb-2">活动结束阶段</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">开始时间</label>
+                    <input 
+                      type="datetime-local" 
+                      className="border p-2 rounded w-full text-sm" 
+                      onChange={e => setFormData({...formData, phaseTimeEndStart: e.target.value})} 
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-600 mb-1 block">结束时间</label>
+                    <input 
+                      type="datetime-local" 
+                      className="border p-2 rounded w-full text-sm" 
+                      onChange={e => setFormData({...formData, phaseTimeEndEnd: e.target.value})} 
+                    />
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -588,6 +677,176 @@ function ActivityMatters({ user }) {
           <button type="submit" className="bg-blue-600 text-white p-2 rounded">提交报名</button>
           <button onClick={() => setView('register')} type="button" className="text-gray-500 underline text-center">返回</button>
         </form>
+      )}
+
+      {view === 'detail' && selectedActivity && (
+        <div className="grid gap-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-xl font-bold">活动详情 - {selectedActivity.name}</h2>
+            <button 
+              onClick={() => setView('menu')} 
+              className="text-gray-500 underline text-sm"
+            >
+              返回
+            </button>
+          </div>
+          
+          <div className="border p-4 rounded bg-white">
+            <div className="grid gap-4">
+              <div>
+                <h3 className="font-bold text-lg mb-2">{selectedActivity.name}</h3>
+                <p className="text-sm text-gray-600">
+                  <strong>地点：</strong>{selectedActivity.location}
+                </p>
+                {selectedActivity.time && (
+                  <p className="text-sm text-gray-600">
+                    <strong>时间：</strong>{selectedActivity.time}
+                  </p>
+                )}
+                {selectedActivity.organizerName && (
+                  <p className="text-sm text-gray-600">
+                    <strong>组织者：</strong>{selectedActivity.organizerName}{selectedActivity.organizerClass ? ` (${selectedActivity.organizerClass})` : ''}
+                  </p>
+                )}
+                {selectedActivity.capacity && (
+                  <p className="text-sm text-gray-600">
+                    <strong>人数：</strong>{selectedActivity.currentRegCount || 0} / {selectedActivity.capacity}
+                  </p>
+                )}
+                {selectedActivity.hasFee && (
+                  <p className="text-sm text-orange-600 font-medium">
+                    <strong>💰 报名费：</strong>{selectedActivity.feeAmount || '未设置'}
+                  </p>
+                )}
+              </div>
+              
+              <div className="border-t pt-4">
+                <h4 className="font-bold mb-2">活动简介</h4>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedActivity.description}</p>
+              </div>
+              
+              {selectedActivity.flow && (
+                <div className="border-t pt-4">
+                  <h4 className="font-bold mb-2">活动流程</h4>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedActivity.flow}</p>
+                </div>
+              )}
+              
+              {selectedActivity.requirements && (
+                <div className="border-t pt-4">
+                  <h4 className="font-bold mb-2">活动需求</h4>
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedActivity.requirements}</p>
+                </div>
+              )}
+              
+              {/* 活动阶段显示 */}
+              <div className="border-t pt-4">
+                <h4 className="font-bold mb-3">活动进度</h4>
+                <div className="relative pt-6 pb-2">
+                  <div className="flex justify-between relative">
+                    <div className="absolute top-1/2 left-0 w-full h-1 bg-gray-200 -translate-y-1/2"></div>
+                    <div 
+                      className="absolute top-1/2 left-0 h-1 bg-blue-500 -translate-y-1/2 transition-all duration-500" 
+                      style={{ width: `${(phases.indexOf(selectedActivity.currentPhase || '活动准备') / (phases.length - 1)) * 100}%` }}
+                    ></div>
+                    
+                    {phases.map((p, idx) => (
+                      <div key={p} className="flex flex-col items-center relative z-10">
+                        <div className={`w-4 h-4 rounded-full border-2 ${
+                          phases.indexOf(selectedActivity.currentPhase || '活动准备') >= idx 
+                          ? 'bg-blue-500 border-blue-500' 
+                          : 'bg-white border-gray-300'
+                        } ${(selectedActivity.currentPhase || '活动准备') === p ? 'ring-4 ring-blue-100' : ''}`}></div>
+                        <span className={`text-[10px] mt-2 font-medium ${(selectedActivity.currentPhase || '活动准备') === p ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
+                          {p}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                
+                {/* 显示当前阶段时间信息 */}
+                <div className="mt-4 space-y-2">
+                  {selectedActivity.currentPhase === '活动准备' && selectedActivity.phaseTimePreparation && (
+                    <div className="text-xs text-blue-600 font-medium bg-blue-50 p-2 rounded">
+                      准备时间: {selectedActivity.phaseTimePreparation}
+                    </div>
+                  )}
+                  {selectedActivity.currentPhase === '活动开始' && selectedActivity.phaseTimeStart && (
+                    <div className="text-xs text-blue-600 font-medium bg-blue-50 p-2 rounded">
+                      开始时间: {selectedActivity.phaseTimeStart}
+                    </div>
+                  )}
+                  {selectedActivity.currentPhase === '活动中' && selectedActivity.phaseTimeInProgress && (
+                    <div className="text-xs text-blue-600 font-medium bg-blue-50 p-2 rounded">
+                      进行时间: {selectedActivity.phaseTimeInProgress}
+                    </div>
+                  )}
+                  {selectedActivity.currentPhase === '活动结束' && selectedActivity.phaseTimeEnd && (
+                    <div className="text-xs text-blue-600 font-medium bg-blue-50 p-2 rounded">
+                      结束时间: {selectedActivity.phaseTimeEnd}
+                    </div>
+                  )}
+                  
+                  {/* 显示所有阶段时间 */}
+                  <div className="text-xs text-gray-600 space-y-1 mt-3">
+                    {selectedActivity.phaseTimePreparation && (
+                      <p>准备阶段: {selectedActivity.phaseTimePreparation}</p>
+                    )}
+                    {selectedActivity.phaseTimeStart && (
+                      <p>开始阶段: {selectedActivity.phaseTimeStart}</p>
+                    )}
+                    {selectedActivity.phaseTimeInProgress && (
+                      <p>进行阶段: {selectedActivity.phaseTimeInProgress}</p>
+                    )}
+                    {selectedActivity.phaseTimeEnd && (
+                      <p>结束阶段: {selectedActivity.phaseTimeEnd}</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+              
+              <div className="border-t pt-4 flex gap-2">
+                {selectedActivity.organizerID !== user.userID && (
+                  <button 
+                    onClick={() => {
+                      setView('regForm');
+                    }}
+                    disabled={selectedActivity.capacity && selectedActivity.currentRegCount >= selectedActivity.capacity}
+                    className={`px-4 py-2 rounded font-bold ${
+                      selectedActivity.capacity && selectedActivity.currentRegCount >= selectedActivity.capacity
+                        ? 'bg-gray-400 text-white cursor-not-allowed'
+                        : 'bg-blue-500 text-white hover:bg-blue-600'
+                    }`}
+                  >
+                    {selectedActivity.capacity && selectedActivity.currentRegCount >= selectedActivity.capacity ? '人数已满' : '去报名'}
+                  </button>
+                )}
+                {(selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                  <>
+                    <button 
+                      onClick={() => fetchParticipants(selectedActivity.id)}
+                      className="bg-purple-600 text-white px-4 py-2 rounded font-bold hover:bg-purple-700"
+                    >
+                      参与人员
+                    </button>
+                    <button 
+                      onClick={() => {
+                        const link = document.createElement('a');
+                        const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+                        link.href = `${apiBase}/api/activities/${selectedActivity.id}/export?userID=${user.userID}`;
+                        link.click();
+                      }}
+                      className="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700"
+                    >
+                      下载参与者Excel
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {view === 'participants' && participants && (
