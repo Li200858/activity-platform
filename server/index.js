@@ -719,16 +719,25 @@ app.get('/api/clubs/:id/members', async (req, res) => {
     const members = await ClubMember.find({
       clubID: club._id,
       status: 'approved'
-    }).populate('userID', 'name class').sort({ createdAt: 1 });
+    }).sort({ createdAt: 1 });
+    
+    // 手动查询每个成员的用户信息
+    const membersWithUserInfo = await Promise.all(members.map(async (member) => {
+      const user = await User.findOne({ userID: member.userID });
+      return {
+        index: 0, // 稍后设置
+        name: user ? user.name : '',
+        class: user ? user.class : '',
+        userID: member.userID || '',
+        joinedAt: member.createdAt
+      };
+    }));
     
     res.json({
       clubName: club.name,
-      members: members.map((member, index) => ({
-        index: index + 1,
-        name: member.userID && typeof member.userID === 'object' ? member.userID.name : '',
-        class: member.userID && typeof member.userID === 'object' ? member.userID.class : '',
-        userID: typeof member.userID === 'string' ? member.userID : (member.userID && member.userID._id ? member.userID._id.toString() : ''),
-        joinedAt: member.createdAt
+      members: membersWithUserInfo.map((member, index) => ({
+        ...member,
+        index: index + 1
       }))
     });
   } catch (e) {
