@@ -56,7 +56,11 @@ const ActivitySchema = new mongoose.Schema({
   phaseTimePreparation: { type: String },
   phaseTimeStart: { type: String },
   phaseTimeInProgress: { type: String },
-  phaseTimeEnd: { type: String }
+  phaseTimeEnd: { type: String },
+  // 付费相关字段
+  hasFee: { type: Boolean, default: false },
+  feeAmount: { type: String }, // 费用金额（字符串，支持如"50元"这样的格式）
+  paymentQRCode: { type: String } // 支付二维码文件名（微信/支付宝）
 }, { timestamps: true });
 
 // 社团成员模型
@@ -74,7 +78,10 @@ const ActivityRegistrationSchema = new mongoose.Schema({
   class: { type: String, required: true },
   reason: { type: String },
   contact: { type: String },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  // 付费相关字段
+  paymentStatus: { type: String, enum: ['unpaid', 'paid', 'pending_verification'], default: 'unpaid' }, // 支付状态
+  paymentProof: { type: String } // 支付凭证（截图文件名，可选）
 }, { timestamps: true });
 
 // 通知模型

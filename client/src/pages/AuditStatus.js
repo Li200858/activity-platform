@@ -170,15 +170,37 @@ function AuditStatus({ user }) {
             <div className="space-y-3">
               {data.myActivityRegApprovals.length === 0 && <p className="text-gray-300 text-sm">暂无活动报名</p>}
               {data.myActivityRegApprovals.map(r => (
-                <div key={r.id} className="bg-gray-50 p-4 rounded-xl flex justify-between items-center border border-gray-100">
-                  <div>
-                    <p className="font-bold text-gray-800">{r.name}</p>
-                    <p className="text-[10px] text-gray-400">申请加入活动 ID: {r.activityID}</p>
+                <div key={r.id} className="bg-gray-50 p-4 rounded-xl border border-gray-100">
+                  <div className="flex justify-between items-start mb-3">
+                    <div className="flex-1">
+                      <p className="font-bold text-gray-800">{r.name}</p>
+                      <p className="text-[10px] text-gray-400">{r.class}</p>
+                      {r.paymentProof && (
+                        <div className="mt-2">
+                          <p className="text-xs text-yellow-600 font-medium mb-1">💰 已上传支付凭证</p>
+                          <button 
+                            onClick={() => setSelectedDetail({ ...r, type: 'activityReg' })}
+                            className="text-xs text-blue-600 underline hover:text-blue-800"
+                          >
+                            查看支付截图
+                          </button>
+                        </div>
+                      )}
+                      {r.paymentStatus === 'unpaid' && (
+                        <p className="text-xs text-red-600 font-medium mt-1">⚠️ 未上传支付凭证</p>
+                      )}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => handleApprove('activityReg', r.id, 'approved')} className="bg-green-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold">通过</button>
+                      <button onClick={() => handleApprove('activityReg', r.id, 'rejected')} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold">拒绝</button>
+                    </div>
                   </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => handleApprove('activityReg', r.id, 'approved')} className="bg-green-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold">通过</button>
-                    <button onClick={() => handleApprove('activityReg', r.id, 'rejected')} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold">拒绝</button>
-                  </div>
+                  {r.reason && (
+                    <p className="text-xs text-gray-600 mt-2">申请原因: {r.reason}</p>
+                  )}
+                  {r.contact && (
+                    <p className="text-xs text-gray-600">联系方式: {r.contact}</p>
+                  )}
                 </div>
               ))}
             </div>
@@ -238,7 +260,9 @@ function AuditStatus({ user }) {
             <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
               {Object.entries(selectedDetail).map(([key, value]) => {
                 // 排除不需要显示的字段
-                if (['id', 'founderID', 'organizerID', 'status', 'type', 'createdAt', 'updatedAt'].includes(key)) return null;
+                if (['id', 'founderID', 'organizerID', 'status', 'type', 'createdAt', 'updatedAt', '_id', '__v'].includes(key)) return null;
+                // 跳过空值（除了支付凭证和支付状态）
+                if (!value && key !== 'paymentProof' && key !== 'paymentStatus') return null;
                 
                 // 将字段名翻译为中文显示
                 const labels = {
@@ -246,7 +270,7 @@ function AuditStatus({ user }) {
                   intro: '社团介绍', content: '活动内容', location: '举办地点',
                   time: '举办时间', duration: '时长', weeks: '持续周数', capacity: '人数限制',
                   description: '简要描述', flow: '活动流程', requirements: '活动需求', file: '附件',
-                  activityID: '活动 ID'
+                  activityID: '活动 ID', paymentProof: '支付凭证', paymentStatus: '支付状态'
                 };
 
                 if (key === 'file' && value) {
@@ -264,6 +288,54 @@ function AuditStatus({ user }) {
                           点击查看/下载附件
                         </a>
                       </div>
+                    </div>
+                  );
+                }
+
+                // 显示支付凭证
+                if (key === 'paymentProof' && value) {
+                  return (
+                    <div key={key} className="border-l-4 border-yellow-100 pl-4 py-1">
+                      <label className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest">{labels[key]}</label>
+                      <div className="mt-1.5">
+                        <img 
+                          src={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/uploads/${value}`}
+                          alt="支付凭证"
+                          className="max-w-full rounded-lg border-2 border-yellow-200 cursor-pointer hover:border-yellow-400 transition-all"
+                          onClick={() => window.open(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/uploads/${value}`, '_blank')}
+                        />
+                        <a 
+                          href={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/uploads/${value}`} 
+                          target="_blank" 
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-2 px-4 py-2 bg-yellow-50 text-yellow-600 rounded-xl text-xs font-black hover:bg-yellow-100 transition-all mt-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>
+                          查看大图
+                        </a>
+                      </div>
+                    </div>
+                  );
+                }
+
+                // 显示支付状态
+                if (key === 'paymentStatus') {
+                  const statusLabels = {
+                    'unpaid': '未支付',
+                    'pending_verification': '待审核',
+                    'paid': '已支付'
+                  };
+                  const statusColors = {
+                    'unpaid': 'text-red-600 bg-red-50',
+                    'pending_verification': 'text-yellow-600 bg-yellow-50',
+                    'paid': 'text-green-600 bg-green-50'
+                  };
+                  return (
+                    <div key={key} className="border-l-4 border-yellow-100 pl-4 py-1">
+                      <label className="text-[10px] font-bold text-yellow-400 uppercase tracking-widest">{labels[key]}</label>
+                      <p className={`text-xs mt-1.5 px-3 py-1 rounded-full font-bold inline-block ${statusColors[value] || 'text-gray-600 bg-gray-50'}`}>
+                        {statusLabels[value] || value}
+                      </p>
                     </div>
                   );
                 }

@@ -35,6 +35,11 @@ const storage = multer.diskStorage({
   }
 });
 const upload = multer({ storage });
+// 支持多个文件上传（用于支付二维码）
+const uploadMultiple = multer({ storage }).fields([
+  { name: 'file', maxCount: 1 },
+  { name: 'paymentQRCode', maxCount: 1 }
+]);
 
 // 轮换时间检查
 const isRotationAllowed = () => {
@@ -49,6 +54,20 @@ const isRotationAllowed = () => {
 };
 
 // --- API 路由 ---
+
+// 服务器时间API（用于检查时间同步）
+app.get('/api/time', (req, res) => {
+  const now = moment();
+  res.json({
+    serverTime: now.format('YYYY-MM-DD HH:mm:ss'),
+    serverTimeISO: now.toISOString(),
+    timestamp: Date.now(),
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+    day: now.day(),
+    hour: now.hour(),
+    minute: now.minute()
+  });
+});
 
 // 用户注册与登录
 app.post('/api/user/register', async (req, res) => {
@@ -243,17 +262,27 @@ app.post('/api/clubs/rotate', async (req, res) => {
 });
 
 // 活动
-app.post('/api/activities', upload.single('file'), async (req, res) => {
+app.post('/api/activities', uploadMultiple, async (req, res) => {
   try {
     const activityData = {
       ...req.body,
-      file: req.file ? req.file.filename : null,
+      file: req.files && req.files['file'] ? req.files['file'][0].filename : null,
       status: 'pending',
       phaseTimePreparation: req.body.phaseTimePreparation || null,
       phaseTimeStart: req.body.phaseTimeStart || null,
       phaseTimeInProgress: req.body.phaseTimeInProgress || null,
-      phaseTimeEnd: req.body.phaseTimeEnd || null
+      phaseTimeEnd: req.body.phaseTimeEnd || null,
+      // 付费相关字段
+      hasFee: req.body.hasFee === 'true' || req.body.hasFee === true,
+      feeAmount: req.body.feeAmount || null,
+      paymentQRCode: req.files && req.files['paymentQRCode'] ? req.files['paymentQRCode'][0].filename : null
     };
+    
+    // 如果选择了付费但未上传二维码，返回错误
+    if (activityData.hasFee && !activityData.paymentQRCode) {
+      return res.status(400).json({ error: '选择了报名费功能，必须上传支付二维码' });
+    }
+    
     const activity = await Activity.create(activityData);
     io.emit('notification_update', { type: 'new_audit' });
     const actObj = activity.toObject();
@@ -302,7 +331,11 @@ app.get('/api/activities/approved', async (req, res) => {
         phaseTimePreparation: plain.phaseTimePreparation || null,
         phaseTimeStart: plain.phaseTimeStart || null,
         phaseTimeInProgress: plain.phaseTimeInProgress || null,
-        phaseTimeEnd: plain.phaseTimeEnd || null
+        phaseTimeEnd: plain.phaseTimeEnd || null,
+        // 付费相关字段
+        hasFee: plain.hasFee || false,
+        feeAmount: plain.feeAmount || null,
+        paymentQRCode: plain.paymentQRCode || null
       };
     }));
     
@@ -313,7 +346,7 @@ app.get('/api/activities/approved', async (req, res) => {
   }
 });
 
-app.post('/api/activities/register', async (req, res) => {
+app.post('/api/activities/register', upload.single('paymentProof'), async (req, res) => {
   try {
     const { activityID } = req.body;
     
@@ -328,7 +361,20 @@ app.post('/api/activities/register', async (req, res) => {
       }
     }
     
-    const reg = await ActivityRegistration.create({ ...req.body, activityID: activity._id, status: 'pending' });
+    // 如果活动有费用，检查是否上传了支付凭证
+    if (activity.hasFee && !req.file) {
+      return res.status(400).json({ error: '该活动需要支付报名费，请上传支付截图' });
+    }
+    
+    const regData = {
+      ...req.body,
+      activityID: activity._id,
+      status: 'pending',
+      paymentStatus: activity.hasFee ? (req.file ? 'pending_verification' : 'unpaid') : 'unpaid',
+      paymentProof: req.file ? req.file.filename : null
+    };
+    
+    const reg = await ActivityRegistration.create(regData);
     const regObj = reg.toObject();
     regObj.id = reg._id.toString();
     res.json(regObj);
@@ -457,7 +503,10 @@ app.get('/api/activities/:id/participants', async (req, res) => {
           userID: regObj.userID || '',
           contact: regObj.contact || '',
           reason: regObj.reason || '',
-          registeredAt: regObj.createdAt
+          registeredAt: regObj.createdAt,
+          // 支付相关字段
+          paymentStatus: regObj.paymentStatus || 'unpaid',
+          paymentProof: regObj.paymentProof || null
         };
       })
     });
@@ -497,10 +546,22 @@ app.get('/api/audit/status/:userID', async (req, res) => {
     const myClubs = await Club.find({ founderID: userID });
     const myClubIDs = myClubs.map(c => c._id);
     if (myClubIDs.length > 0) {
-      result.myClubJoinApprovals = await ClubMember.find({ 
+      const joinApprovals = await ClubMember.find({ 
         clubID: { $in: myClubIDs },
         status: 'pending'
-      }).populate('userID', 'name class');
+      });
+      // 手动查询每个申请者的用户信息
+      result.myClubJoinApprovals = await Promise.all(joinApprovals.map(async (approval) => {
+        const approvalUser = await User.findOne({ userID: approval.userID });
+        const approvalObj = approval.toObject();
+        approvalObj.id = approval._id.toString();
+        approvalObj.User = approvalUser ? {
+          name: approvalUser.name,
+          class: approvalUser.class,
+          userID: approvalUser.userID
+        } : null;
+        return approvalObj;
+      }));
     }
 
     // 转换_id为id
@@ -556,7 +617,29 @@ app.post('/api/audit/approve', async (req, res) => {
     else if (type === 'activityReg') { 
       const item = await ActivityRegistration.findById(id);
       if (!item) return res.status(404).json({ error: '报名不存在' });
-      item.status = status; 
+      
+      // 获取活动信息，检查是否有费用
+      const activity = await Activity.findById(item.activityID);
+      
+      item.status = status;
+      
+      // 如果活动有费用，更新支付状态
+      if (activity && activity.hasFee) {
+        if (status === 'approved') {
+          // 审核通过时，如果已上传支付凭证，标记为已支付
+          if (item.paymentProof) {
+            item.paymentStatus = 'paid';
+          }
+          // 如果没有支付凭证但审核通过了（不应该发生，但以防万一）
+          else {
+            item.paymentStatus = 'unpaid';
+          }
+        } else if (status === 'rejected') {
+          // 审核拒绝时，保持支付状态不变（可能是支付凭证不对）
+          // paymentStatus保持原样
+        }
+      }
+      
       await item.save(); 
       targetUserID = item.userID; 
     }
