@@ -20,23 +20,53 @@ const PORT = process.env.PORT || 5001;
 
 app.use(cors());
 app.use(express.json());
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// 文件上传配置
+// 配置上传目录 - 支持Render持久化磁盘
+const uploadsDir = process.env.NODE_ENV === 'production' 
+  ? (process.env.UPLOAD_DIR || '/opt/render/project/src/uploads')
+  : path.join(__dirname, 'uploads');
+
+console.log('📁 文件上传目录:', uploadsDir);
+console.log('📁 目录是否存在:', fs.existsSync(uploadsDir));
+
+// 确保上传目录存在
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+  console.log('✅ 已创建上传目录:', uploadsDir);
+}
+
+// 配置静态文件服务 - 使用持久化磁盘路径
+app.use('/uploads', express.static(uploadsDir));
+
+// 文件上传配置 - 使用持久化磁盘
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const dir = path.join(__dirname, 'uploads');
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    cb(null, dir);
+    // 确保目录存在
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    cb(null, uploadsDir);
   },
   filename: (req, file, cb) => {
     const uniqueName = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(file.originalname);
     cb(null, uniqueName);
   }
 });
-const upload = multer({ storage });
+
+const upload = multer({ 
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB限制
+  }
+});
+
 // 支持多个文件上传（用于支付二维码）
-const uploadMultiple = multer({ storage }).fields([
+const uploadMultiple = multer({ 
+  storage,
+  limits: {
+    fileSize: 10 * 1024 * 1024 // 10MB限制
+  }
+}).fields([
   { name: 'file', maxCount: 1 },
   { name: 'paymentQRCode', maxCount: 1 }
 ]);
