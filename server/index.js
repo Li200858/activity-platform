@@ -157,9 +157,58 @@ app.get('/api/search', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 检查社团名称是否可用
+app.post('/api/clubs/check-name', async (req, res) => {
+  try {
+    const { name } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: '缺少社团名称参数' });
+    }
+    
+    // 检查社团名称是否与已有社团重复（包括pending和approved状态）
+    const existingClub = await Club.findOne({ name });
+    if (existingClub) {
+      return res.json({ 
+        available: false, 
+        error: '该社团名称已被使用，请使用其他名称' 
+      });
+    }
+    
+    // 检查社团名称是否与任何用户名重复
+    const existingUser = await User.findOne({ name });
+    if (existingUser) {
+      return res.json({ 
+        available: false, 
+        error: '该社团名称与已有用户名重复，请使用其他名称' 
+      });
+    }
+    
+    // 名称可用
+    return res.json({ available: true });
+  } catch (error) {
+    console.error('检查社团名称失败:', error);
+    res.status(500).json({ error: '检查社团名称失败' });
+  }
+});
+
 // 社团
 app.post('/api/clubs', upload.single('file'), async (req, res) => {
   try {
+    const { name } = req.body;
+    
+    // 检查社团名称是否与已有社团重复（包括pending和approved状态）
+    const existingClub = await Club.findOne({ name });
+    if (existingClub) {
+      return res.status(400).json({ error: '该社团名称已被使用，请使用其他名称' });
+    }
+    
+    // 检查社团名称是否与任何用户名重复
+    const existingUser = await User.findOne({ name });
+    if (existingUser) {
+      return res.status(400).json({ error: '该社团名称与已有用户名重复，请使用其他名称' });
+    }
+    
     const club = await Club.create({ ...req.body, file: req.file ? req.file.filename : null, status: 'pending' });
     io.emit('notification_update', { type: 'new_audit' });
     const clubObj = club.toObject();

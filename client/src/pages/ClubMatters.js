@@ -11,6 +11,8 @@ function ClubMatters({ user }) {
     name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: ''
   });
   const [file, setFile] = useState(null);
+  const [nameStatus, setNameStatus] = useState(null); // null, 'checking', 'available', 'taken'
+  const [nameError, setNameError] = useState('');
 
   useEffect(() => {
     fetchClubs();
@@ -43,8 +45,47 @@ function ClubMatters({ user }) {
     }
   };
 
+  // 检查社团名称是否可用
+  const checkNameAvailability = async (name) => {
+    if (!name || name.trim() === '') {
+      setNameStatus(null);
+      setNameError('');
+      return;
+    }
+    
+    setNameStatus('checking');
+    setNameError('');
+    
+    try {
+      const res = await api.post('/clubs/check-name', { name });
+      if (res.data.available) {
+        setNameStatus('available');
+        setNameError('');
+      } else {
+        setNameStatus('taken');
+        setNameError(res.data.error || '该社团名称不可用');
+      }
+    } catch (err) {
+      setNameStatus('taken');
+      setNameError(err.response?.data?.error || '检查失败，请稍后重试');
+    }
+  };
+
   const handleCreateClub = async (e) => {
     e.preventDefault();
+    
+    // 如果名称已被占用，阻止提交
+    if (nameStatus === 'taken') {
+      alert(nameError || '该社团名称不可用，请使用其他名称');
+      return;
+    }
+    
+    // 如果正在检查，等待检查完成
+    if (nameStatus === 'checking') {
+      alert('正在检查社团名称，请稍候...');
+      return;
+    }
+    
     try {
       const data = new FormData();
       Object.keys(formData).forEach(key => data.append(key, formData[key]));
@@ -54,6 +95,11 @@ function ClubMatters({ user }) {
       await api.post('/clubs', data);
       alert('社团申请已提交，请等待管理员审核');
       setView('menu');
+      // 重置表单
+      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '' });
+      setFile(null);
+      setNameStatus(null);
+      setNameError('');
     } catch (err) {
       alert(err.response?.data?.error || '创建失败，请稍后重试');
     }
@@ -311,7 +357,38 @@ function ClubMatters({ user }) {
               <div className="space-y-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团基本信息</label>
-                  <input placeholder="社团名称" className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all" required onChange={e => setFormData({...formData, name: e.target.value})} />
+                  <div>
+                    <input 
+                      placeholder="社团名称" 
+                      className={`bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 transition-all w-full ${
+                        nameStatus === 'taken' 
+                          ? 'focus:ring-red-500 ring-2 ring-red-300' 
+                          : nameStatus === 'available' 
+                          ? 'focus:ring-green-500 ring-2 ring-green-300' 
+                          : 'focus:ring-purple-500'
+                      }`} 
+                      required 
+                      value={formData.name}
+                      onChange={e => {
+                        const newName = e.target.value;
+                        setFormData({...formData, name: newName});
+                        // 延迟检查，避免频繁请求
+                        clearTimeout(window.nameCheckTimeout);
+                        window.nameCheckTimeout = setTimeout(() => {
+                          checkNameAvailability(newName);
+                        }, 500);
+                      }} 
+                    />
+                    {nameStatus === 'checking' && (
+                      <p className="text-xs text-gray-500 mt-1 ml-1">正在检查名称...</p>
+                    )}
+                    {nameStatus === 'available' && (
+                      <p className="text-xs text-green-600 mt-1 ml-1">✓ 该名称可用</p>
+                    )}
+                    {nameStatus === 'taken' && nameError && (
+                      <p className="text-xs text-red-600 mt-1 ml-1">✗ {nameError}</p>
+                    )}
+                  </div>
                   <textarea placeholder="一句话介绍社团..." className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all h-24" required onChange={e => setFormData({...formData, intro: e.target.value})} />
                   <textarea placeholder="主要活动内容..." className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all h-24" required onChange={e => setFormData({...formData, content: e.target.value})} />
                 </div>
