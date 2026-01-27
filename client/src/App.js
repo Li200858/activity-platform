@@ -143,6 +143,26 @@ function App() {
       </header>
 
       <main className="p-4 sm:p-8 max-w-5xl mx-auto">
+        {/* Google Calendar 链接提示 */}
+        <div className="bg-gradient-to-r from-blue-50 to-purple-50 border-2 border-blue-200 rounded-2xl p-4 mb-6 shadow-sm">
+          <div className="flex items-center gap-3 flex-wrap">
+            <a 
+              href="https://calendar.google.com/calendar/u/0?cid=NmRiZDhmM2M4MWFjMGU5MjIwMDdmZDhmNGM2OGQwMTQ5ODM2ZTk5NjcyODJhOGY1ZDc2NzUzNzZmY2UyNThhZUBncm91cC5jYWxlbmRhci5nb29nbGUuY29t"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black text-sm hover:bg-blue-700 hover:scale-105 active:scale-95 transition-all shadow-lg shadow-blue-100 flex items-center gap-2"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+              选择社团
+            </a>
+            <p className="text-sm text-gray-600 font-medium flex-1">
+              点击此链接来选择社团，此功能等待网站更新
+            </p>
+          </div>
+        </div>
+
         {activeTab === '搜索结果' && searchResults && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
             <div className="flex justify-between items-center">
@@ -218,6 +238,9 @@ function App() {
 }
 
 export default App;
+
+
+
 
 
 
