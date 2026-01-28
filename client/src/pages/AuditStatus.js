@@ -3,6 +3,8 @@ import { api } from '../utils/api';
 
 function AuditStatus({ user }) {
   const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
   const [selectedDetail, setSelectedDetail] = useState(null); // 控制弹窗显示
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -12,21 +14,30 @@ function AuditStatus({ user }) {
   }, []);
 
   const fetchAuditStatus = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const res = await api.get(`/audit/status/${user.userID}`);
       setData(res.data);
+      setError(null);
     } catch (e) {
       console.error("获取审核状态失败", e);
+      const errorMessage = e.response?.data?.error || e.message || '网络连接失败，请检查网络后重试';
+      setError(errorMessage);
+      setData(null); // 确保data为null，显示错误界面
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleApprove = async (type, id, status) => {
     try {
       await api.post('/audit/approve', { type, id, status });
-      fetchAuditStatus();
+      await fetchAuditStatus(); // 等待刷新完成
       setSelectedDetail(null); // 审核后关闭弹窗
     } catch (e) {
-      alert("操作失败");
+      const errorMsg = e.response?.data?.error || e.message || '操作失败，请稍后重试';
+      alert(errorMsg);
     }
   };
 
@@ -50,7 +61,54 @@ function AuditStatus({ user }) {
     }
   };
 
-  if (!data) return <div className="p-10 text-center text-gray-500 italic">正在连接服务器...</div>;
+  // 加载中状态
+  if (loading) {
+    return (
+      <div className="p-10 text-center">
+        <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mb-4"></div>
+        <p className="text-gray-500 italic">正在连接服务器...</p>
+        <p className="text-xs text-gray-400 mt-2">如果长时间无响应，请检查网络连接</p>
+      </div>
+    );
+  }
+
+  // 错误状态
+  if (error) {
+    return (
+      <div className="p-10 text-center">
+        <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-8 max-w-md mx-auto">
+          <div className="text-red-600 mb-4">
+            <svg className="w-16 h-16 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="text-lg font-black text-red-600 mb-2">加载失败</h3>
+          <p className="text-sm text-gray-600 mb-6">{error}</p>
+          <button 
+            onClick={fetchAuditStatus}
+            className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black hover:bg-blue-700 transition-all shadow-lg shadow-blue-100"
+          >
+            重试
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // 数据为空（不应该发生，但作为安全措施）
+  if (!data) {
+    return (
+      <div className="p-10 text-center">
+        <p className="text-gray-500 italic mb-4">暂无数据</p>
+        <button 
+          onClick={fetchAuditStatus}
+          className="bg-blue-600 text-white px-6 py-3 rounded-xl font-black hover:bg-blue-700 transition-all"
+        >
+          刷新
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-20">
@@ -377,6 +435,9 @@ function AuditStatus({ user }) {
 }
 
 export default AuditStatus;
+
+
+
 
 
 

@@ -681,47 +681,79 @@ app.get('/api/audit/status/:userID', async (req, res) => {
     const { userID } = req.params;
     const user = await User.findOne({ userID });
     if (!user) return res.status(404).json({ error: '用户不存在' });
-    const result = {
-      clubCreations: [], activityCreations: [], allActivityRegs: [],
-      myClubStatus: await Club.find({ founderID: userID }),
-      myActivityStatus: await Activity.find({ organizerID: userID }),
-      myActivityRegStatus: await ActivityRegistration.find({ userID }).populate('activityID'),
-      myActivityRegApprovals: [],
-      myClubJoinApprovals: [],
-      myOwnClubJoinStatus: await ClubMember.find({ userID }).populate('clubID')
-    };
-    if (user.role === 'admin' || user.role === 'super_admin') {
-      result.clubCreations = await Club.find({ status: 'pending' });
-      result.activityCreations = await Activity.find({ status: 'pending' });
-      result.allActivityRegs = await ActivityRegistration.find({ status: 'pending' });
-    }
-    const myActs = await Activity.find({ organizerID: userID });
-    const myActIDs = myActs.map(a => a._id);
-    if (myActIDs.length > 0) {
-      result.myActivityRegApprovals = await ActivityRegistration.find({ activityID: { $in: myActIDs }, status: 'pending' });
-    }
     
-    // 获取我创建的社团收到的加入申请
-    const myClubs = await Club.find({ founderID: userID });
+    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+    
+    // 并行执行所有基础查询，大幅提升性能
+    const [
+      myClubStatus,
+      myActivityStatus,
+      myActivityRegStatus,
+      myOwnClubJoinStatus,
+      myActs,
+      myClubs,
+      ...adminData
+    ] = await Promise.all([
+      Club.find({ founderID: userID }),
+      Activity.find({ organizerID: userID }),
+      ActivityRegistration.find({ userID }).populate('activityID'),
+      ClubMember.find({ userID }).populate('clubID'),
+      Activity.find({ organizerID: userID }),
+      Club.find({ founderID: userID }),
+      // 管理员数据
+      isAdmin ? Club.find({ status: 'pending' }) : Promise.resolve([]),
+      isAdmin ? Activity.find({ status: 'pending' }) : Promise.resolve([]),
+      isAdmin ? ActivityRegistration.find({ status: 'pending' }) : Promise.resolve([])
+    ]);
+    
+    const clubCreations = adminData[0] || [];
+    const activityCreations = adminData[1] || [];
+    const allActivityRegs = adminData[2] || [];
+    
+    const myActIDs = myActs.map(a => a._id);
     const myClubIDs = myClubs.map(c => c._id);
-    if (myClubIDs.length > 0) {
-      const joinApprovals = await ClubMember.find({ 
-        clubID: { $in: myClubIDs },
-        status: 'pending'
-      });
-      // 手动查询每个申请者的用户信息
-      result.myClubJoinApprovals = await Promise.all(joinApprovals.map(async (approval) => {
-        const approvalUser = await User.findOne({ userID: approval.userID });
-        const approvalObj = approval.toObject();
-        approvalObj.id = approval._id.toString();
-        approvalObj.User = approvalUser ? {
-          name: approvalUser.name,
-          class: approvalUser.class,
-          userID: approvalUser.userID
-        } : null;
-        return approvalObj;
-      }));
-    }
+    
+    // 并行查询活动报名申请和社团加入申请
+    const [myActivityRegApprovals, joinApprovals] = await Promise.all([
+      myActIDs.length > 0 
+        ? ActivityRegistration.find({ activityID: { $in: myActIDs }, status: 'pending' })
+        : Promise.resolve([]),
+      myClubIDs.length > 0
+        ? ClubMember.find({ clubID: { $in: myClubIDs }, status: 'pending' })
+        : Promise.resolve([])
+    ]);
+    
+    // 批量查询所有申请者的用户信息（避免N+1查询）
+    const approvalUserIDs = [...new Set(joinApprovals.map(a => a.userID))];
+    const approvalUsers = approvalUserIDs.length > 0
+      ? await User.find({ userID: { $in: approvalUserIDs } })
+      : [];
+    const userMap = new Map(approvalUsers.map(u => [u.userID, u]));
+    
+    // 构建社团加入申请结果
+    const myClubJoinApprovals = joinApprovals.map((approval) => {
+      const approvalUser = userMap.get(approval.userID);
+      const approvalObj = approval.toObject();
+      approvalObj.id = approval._id.toString();
+      approvalObj.User = approvalUser ? {
+        name: approvalUser.name,
+        class: approvalUser.class,
+        userID: approvalUser.userID
+      } : null;
+      return approvalObj;
+    });
+    
+    const result = {
+      clubCreations,
+      activityCreations,
+      allActivityRegs,
+      myClubStatus,
+      myActivityStatus,
+      myActivityRegStatus,
+      myActivityRegApprovals,
+      myClubJoinApprovals,
+      myOwnClubJoinStatus
+    };
 
     // 转换_id为id
     const convertId = (item) => {

@@ -49,11 +49,16 @@ export const useAuth = () => {
   return { user, login, register, logout, copyID };
 };
 
+// 创建axios实例，配置超时时间
+const axiosInstance = axios.create({
+  timeout: 30000, // 30秒超时
+});
+
 export const api = {
-  get: (url) => axios.get(`${API_BASE}${url}`),
-  post: (url, data) => axios.post(`${API_BASE}${url}`, data),
-  put: (url, data) => axios.put(`${API_BASE}${url}`, data),
-  delete: (url) => axios.delete(`${API_BASE}${url}`),
+  get: (url) => axiosInstance.get(`${API_BASE}${url}`),
+  post: (url, data) => axiosInstance.post(`${API_BASE}${url}`, data),
+  put: (url, data) => axiosInstance.put(`${API_BASE}${url}`, data),
+  delete: (url) => axiosInstance.delete(`${API_BASE}${url}`),
 };
 
 

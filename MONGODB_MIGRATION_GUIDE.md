@@ -203,3 +203,5 @@ REACT_APP_API_URL=https://activity-registration-backend.onrender.com
 3. 设置自动备份
 4. 监控服务状态
 
+
+

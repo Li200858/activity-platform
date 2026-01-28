@@ -30,3 +30,5 @@ services:
       - key: REACT_APP_API_URL
         sync: false  # 需要在Render控制台手动设置，格式: https://activity-registration-backend.onrender.com
 
+
+

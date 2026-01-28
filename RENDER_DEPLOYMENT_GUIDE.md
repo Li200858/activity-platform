@@ -174,3 +174,5 @@ REACT_APP_API_URL=https://activity-registration-backend.onrender.com
 - 前端：`https://activity-registration-frontend.onrender.com`
 - 后端：`https://activity-registration-backend.onrender.com`
 
+
+
