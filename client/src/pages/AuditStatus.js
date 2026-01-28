@@ -13,6 +13,20 @@ function AuditStatus({ user }) {
     fetchAuditStatus();
   }, []);
 
+  // 添加键盘快捷键：按R键刷新
+  useEffect(() => {
+    const handleKeyPress = (e) => {
+      if (e.key === 'r' || e.key === 'R') {
+        if (e.ctrlKey || e.metaKey) {
+          e.preventDefault();
+          fetchAuditStatus();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
+
   const fetchAuditStatus = async () => {
     setLoading(true);
     setError(null);

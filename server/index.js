@@ -679,11 +679,12 @@ app.get('/api/activities/:id/participants', async (req, res) => {
 app.get('/api/audit/status/:userID', async (req, res) => {
   try {
     const { userID } = req.params;
-    const user = await User.findOne({ userID });
+    const user = await User.findOne({ userID }).select('role userID'); // 只查询必要字段
     if (!user) return res.status(404).json({ error: '用户不存在' });
     
     const isAdmin = user.role === 'admin' || user.role === 'super_admin';
     
+    // 优化：只查询必要字段，移除populate（减少查询时间）
     // 并行执行所有基础查询，大幅提升性能
     const [
       myClubStatus,
@@ -694,16 +695,16 @@ app.get('/api/audit/status/:userID', async (req, res) => {
       myClubs,
       ...adminData
     ] = await Promise.all([
-      Club.find({ founderID: userID }),
-      Activity.find({ organizerID: userID }),
-      ActivityRegistration.find({ userID }).populate('activityID'),
-      ClubMember.find({ userID }).populate('clubID'),
-      Activity.find({ organizerID: userID }),
-      Club.find({ founderID: userID }),
-      // 管理员数据
-      isAdmin ? Club.find({ status: 'pending' }) : Promise.resolve([]),
-      isAdmin ? Activity.find({ status: 'pending' }) : Promise.resolve([]),
-      isAdmin ? ActivityRegistration.find({ status: 'pending' }) : Promise.resolve([])
+      Club.find({ founderID: userID }).select('name status founderID createdAt').lean(), // lean()返回普通对象，更快
+      Activity.find({ organizerID: userID }).select('name status organizerID createdAt').lean(),
+      ActivityRegistration.find({ userID }).select('name class userID status activityID createdAt').lean(), // 移除populate，只查ID
+      ClubMember.find({ userID }).select('userID clubID status createdAt').lean(), // 移除populate
+      Activity.find({ organizerID: userID }).select('_id').lean(), // 只需要ID
+      Club.find({ founderID: userID }).select('_id').lean(), // 只需要ID
+      // 管理员数据：只查询必要字段
+      isAdmin ? Club.find({ status: 'pending' }).select('name status founderID createdAt').lean() : Promise.resolve([]),
+      isAdmin ? Activity.find({ status: 'pending' }).select('name status organizerID createdAt').lean() : Promise.resolve([]),
+      isAdmin ? ActivityRegistration.find({ status: 'pending' }).select('name class userID status activityID createdAt').lean() : Promise.resolve([])
     ]);
     
     const clubCreations = adminData[0] || [];
@@ -713,34 +714,39 @@ app.get('/api/audit/status/:userID', async (req, res) => {
     const myActIDs = myActs.map(a => a._id);
     const myClubIDs = myClubs.map(c => c._id);
     
-    // 并行查询活动报名申请和社团加入申请
+    // 并行查询活动报名申请和社团加入申请（只查询必要字段）
     const [myActivityRegApprovals, joinApprovals] = await Promise.all([
       myActIDs.length > 0 
         ? ActivityRegistration.find({ activityID: { $in: myActIDs }, status: 'pending' })
+          .select('name class userID status activityID reason contact paymentProof paymentStatus createdAt')
+          .lean()
         : Promise.resolve([]),
       myClubIDs.length > 0
         ? ClubMember.find({ clubID: { $in: myClubIDs }, status: 'pending' })
+          .select('userID clubID status createdAt')
+          .lean()
         : Promise.resolve([])
     ]);
     
-    // 批量查询所有申请者的用户信息（避免N+1查询）
+    // 批量查询所有申请者的用户信息（避免N+1查询，只查询必要字段）
     const approvalUserIDs = [...new Set(joinApprovals.map(a => a.userID))];
     const approvalUsers = approvalUserIDs.length > 0
-      ? await User.find({ userID: { $in: approvalUserIDs } })
+      ? await User.find({ userID: { $in: approvalUserIDs } }).select('name class userID').lean()
       : [];
     const userMap = new Map(approvalUsers.map(u => [u.userID, u]));
     
     // 构建社团加入申请结果
     const myClubJoinApprovals = joinApprovals.map((approval) => {
       const approvalUser = userMap.get(approval.userID);
-      const approvalObj = approval.toObject();
-      approvalObj.id = approval._id.toString();
-      approvalObj.User = approvalUser ? {
-        name: approvalUser.name,
-        class: approvalUser.class,
-        userID: approvalUser.userID
-      } : null;
-      return approvalObj;
+      return {
+        ...approval,
+        id: approval._id.toString(),
+        User: approvalUser ? {
+          name: approvalUser.name,
+          class: approvalUser.class,
+          userID: approvalUser.userID
+        } : null
+      };
     });
     
     const result = {
@@ -755,25 +761,25 @@ app.get('/api/audit/status/:userID', async (req, res) => {
       myOwnClubJoinStatus
     };
 
-    // 转换_id为id
+    // 转换_id为id（优化：因为使用了lean()，已经是普通对象，直接转换）
     const convertId = (item) => {
       if (Array.isArray(item)) {
-        return item.map(i => ({ ...i.toObject(), id: i._id.toString() }));
+        return item.map(i => ({ ...i, id: i._id ? i._id.toString() : i.id }));
       }
-      return { ...item.toObject(), id: item._id.toString() };
+      return { ...item, id: item._id ? item._id.toString() : item.id };
     };
 
     result.myClubStatus = convertId(result.myClubStatus);
     result.myActivityStatus = convertId(result.myActivityStatus);
     result.myActivityRegStatus = convertId(result.myActivityRegStatus);
     result.myOwnClubJoinStatus = convertId(result.myOwnClubJoinStatus);
-    if (user.role === 'admin' || user.role === 'super_admin') {
+    if (isAdmin) {
       result.clubCreations = convertId(result.clubCreations);
       result.activityCreations = convertId(result.activityCreations);
       result.allActivityRegs = convertId(result.allActivityRegs);
     }
     result.myActivityRegApprovals = convertId(result.myActivityRegApprovals);
-    result.myClubJoinApprovals = convertId(result.myClubJoinApprovals);
+    // myClubJoinApprovals已经在上面转换过了
 
     res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
