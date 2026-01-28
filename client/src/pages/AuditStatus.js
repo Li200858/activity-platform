@@ -206,6 +206,12 @@ function AuditStatus({ user }) {
               </div>
               
               <div className="grid gap-2">
+                {searchResults.length === 0 && searchQuery && (
+                  <p className="text-center py-4 text-gray-400 italic">未找到匹配的用户</p>
+                )}
+                {searchResults.length === 0 && !searchQuery && (
+                  <p className="text-center py-4 text-gray-400 italic">请输入姓名或用户ID进行搜索</p>
+                )}
                 {searchResults.map(u => (
                   <div key={u.userID} className="flex justify-between items-center p-4 bg-gray-50 rounded-xl border border-gray-100">
                     <div>
