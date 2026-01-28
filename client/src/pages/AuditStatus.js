@@ -56,12 +56,18 @@ function AuditStatus({ user }) {
   };
 
   const handleSearchUser = async () => {
-    if (!searchQuery) return;
+    if (!searchQuery || !searchQuery.trim()) {
+      setSearchResults([]);
+      return;
+    }
     try {
-      const res = await api.get(`/admin/users/search?query=${searchQuery}`);
-      setSearchResults(res.data);
+      const res = await api.get(`/admin/users/search?query=${encodeURIComponent(searchQuery.trim())}`);
+      setSearchResults(res.data || []);
     } catch (e) {
-      alert("搜索失败");
+      console.error("搜索用户失败:", e);
+      const errorMsg = e.response?.data?.error || e.message || '搜索失败，请稍后重试';
+      alert(errorMsg);
+      setSearchResults([]);
     }
   };
 
