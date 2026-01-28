@@ -935,6 +935,40 @@ app.post('/api/notifications/read', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 管理员搜索用户（用于权限分配）
+app.get('/api/admin/users/search', async (req, res) => {
+  try {
+    const { query } = req.query;
+    if (!query || query.trim() === '') {
+      return res.json([]);
+    }
+    
+    // 搜索用户：按姓名或userID搜索
+    const users = await User.find({
+      $or: [
+        { name: { $regex: query.trim(), $options: 'i' } },
+        { userID: { $regex: query.trim(), $options: 'i' } }
+      ]
+    })
+    .select('name class role userID')
+    .lean()
+    .limit(50); // 限制返回50条，避免数据过多
+    
+    // 格式化返回数据
+    const formattedUsers = users.map(u => ({
+      name: u.name,
+      class: u.class,
+      role: u.role,
+      userID: u.userID
+    }));
+    
+    res.json(formattedUsers);
+  } catch (e) {
+    console.error('搜索用户失败:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 app.post('/api/admin/set-role', async (req, res) => {
   try {
     const op = await User.findOne({ userID: req.body.operatorID });
