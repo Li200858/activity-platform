@@ -29,6 +29,8 @@ function ClubMatters({ user }) {
   const [coreMemberSearchResults, setCoreMemberSearchResults] = useState([]);
   const [coreMemberSearching, setCoreMemberSearching] = useState(false);
   const [rotationQuota, setRotationQuota] = useState(null); // { semester, used, limit }
+  const [editingCategoryType, setEditingCategoryType] = useState(false);
+  const [editCategoryTypeForm, setEditCategoryTypeForm] = useState({ category: '', type: 'activity', blocks: [], intro: '' });
 
   useEffect(() => {
     fetchClubs();
@@ -114,7 +116,8 @@ function ClubMatters({ user }) {
       return;
     }
     
-    if (formData.category === 'wednesday') {
+    const needsBlocks = formData.category === 'wednesday' || formData.category === 'both';
+    if (needsBlocks) {
       if (!formData.blocks || formData.blocks.length < 1) {
         alert('请至少选择 1 个活动板块');
         return;
@@ -128,7 +131,7 @@ function ClubMatters({ user }) {
     try {
       const data = new FormData();
       Object.keys(formData).filter(k => k !== 'blocks').forEach(key => data.append(key, formData[key]));
-      data.append('blocks', formData.category === 'wednesday' ? JSON.stringify(formData.blocks) : '[]');
+      data.append('blocks', needsBlocks ? JSON.stringify(formData.blocks) : '[]');
       data.append('founderID', user.userID);
       if (file) data.append('file', file);
       await api.post('/clubs', data);
@@ -236,6 +239,39 @@ function ClubMatters({ user }) {
     if (club.founderID === user.userID) return true;
     if (user.role === 'admin' || user.role === 'super_admin') return true;
     return (club.coreMembers || []).some(m => m.userID === user.userID);
+  };
+
+  const handleUpdateCategoryType = async () => {
+    if (!selectedClubDetail?.id) return;
+    const needsBlocks = editCategoryTypeForm.category === 'wednesday' || editCategoryTypeForm.category === 'both';
+    if (needsBlocks) {
+      if (!editCategoryTypeForm.blocks || editCategoryTypeForm.blocks.length < 1) {
+        alert('请至少选择 1 个活动板块');
+        return;
+      }
+      if (editCategoryTypeForm.blocks.length > 3) {
+        alert('最多选择 3 个活动板块');
+        return;
+      }
+    }
+    try {
+      await api.put(`/clubs/${selectedClubDetail.id}/update-category-type`, {
+        userID: user.userID,
+        category: editCategoryTypeForm.category,
+        type: editCategoryTypeForm.type,
+        blocks: JSON.stringify(editCategoryTypeForm.blocks),
+        intro: editCategoryTypeForm.intro
+      });
+      alert('更新成功');
+      setEditingCategoryType(false);
+      // 刷新社团列表和详情
+      const res = await api.get('/clubs/approved');
+      setClubs(res.data);
+      const updated = res.data.find(c => c.id === selectedClubDetail.id);
+      if (updated) setSelectedClubDetail(updated);
+    } catch (err) {
+      alert(err.response?.data?.error || '更新失败');
+    }
   };
 
   const fetchAttendanceSessions = async (clubId) => {
@@ -403,10 +439,12 @@ function ClubMatters({ user }) {
               </button>
             </div>
 
-            {/* 显示所有社团列表：日常 / 周三 */}
+            {/* 显示所有社团列表：日常（含周三+日常）/ 周三（含周三+日常） */}
             <div className="border-t pt-6 space-y-6">
               {['daily', 'wednesday'].map(cat => {
-                const list = clubs.filter(c => (c.category || 'wednesday') === cat);
+                const list = cat === 'daily'
+                  ? clubs.filter(c => c.category === 'daily' || c.category === 'both')
+                  : clubs.filter(c => c.category === 'wednesday' || c.category === 'both');
                 const title = cat === 'daily' ? '日常社团' : '周三社团';
                 return (
                   <div key={cat}>
@@ -506,8 +544,8 @@ function ClubMatters({ user }) {
               <button onClick={() => setView('menu')} className="text-xs font-bold text-gray-400 hover:text-blue-600">返回菜单</button>
             </div>
             {(() => {
-              const dailyClubs = clubs.filter(c => (c.category || 'wednesday') === 'daily');
-              const wednesdayClubs = clubs.filter(c => (c.category || 'wednesday') === 'wednesday');
+              const dailyClubs = clubs.filter(c => c.category === 'daily' || c.category === 'both');
+              const wednesdayClubs = clubs.filter(c => c.category === 'wednesday' || c.category === 'both');
               const alreadyInWednesday = !!myClub;
               const renderClubRow = (club, canJoin) => (
                 <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-green-200 transition-colors">
@@ -574,7 +612,7 @@ function ClubMatters({ user }) {
               </div>
             )}
             <div className="grid gap-4">
-              {clubs.filter(c => (c.category || 'wednesday') === 'wednesday' && c.id !== myClub?.Club?.id && c.id !== myClub?.clubID).map(club => {
+              {clubs.filter(c => (c.category === 'wednesday' || c.category === 'both') && c.id !== myClub?.Club?.id && c.id !== myClub?.clubID).map(club => {
                 const quotaUsed = rotationQuota ? rotationQuota.used >= rotationQuota.limit : false;
                 return (
                   <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-blue-200 transition-colors">
@@ -608,7 +646,7 @@ function ClubMatters({ user }) {
               <div className="space-y-4">
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团分类</label>
-                  <div className="flex gap-4 mb-2">
+                  <div className="flex flex-wrap gap-4 mb-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="radio" name="category" checked={formData.category === 'daily'} onChange={() => setFormData({ ...formData, category: 'daily' })} className="rounded-full border-gray-300" />
                       <span className="text-sm font-medium">日常社团</span>
@@ -618,6 +656,11 @@ function ClubMatters({ user }) {
                       <input type="radio" name="category" checked={formData.category === 'wednesday'} onChange={() => setFormData({ ...formData, category: 'wednesday' })} className="rounded-full border-gray-300" />
                       <span className="text-sm font-medium">周三社团</span>
                       <span className="text-[10px] text-gray-400">（两时段四板块，限报一个）</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="category" checked={formData.category === 'both'} onChange={() => setFormData({ ...formData, category: 'both' })} className="rounded-full border-gray-300" />
+                      <span className="text-sm font-medium">周三+日常</span>
+                      <span className="text-[10px] text-gray-400">（同时出现在两个时段）</span>
                     </label>
                   </div>
                 </div>
@@ -661,9 +704,9 @@ function ClubMatters({ user }) {
               </div>
               
               <div className="space-y-4">
-                {formData.category === 'wednesday' && (
+                {(formData.category === 'wednesday' || formData.category === 'both') && (
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团类型与时间板块（仅周三社团）</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团类型与时间板块（周三时段）</label>
                   <div className="flex gap-4 mb-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="radio" name="clubType" checked={formData.type === 'academic'} onChange={() => setFormData({ ...formData, type: 'academic' })} className="rounded-full border-gray-300" />
@@ -839,6 +882,136 @@ function ClubMatters({ user }) {
             </div>
             
             <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
+              {/* 社团分类与类型区块（可编辑） */}
+              {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                <div className="border-l-4 border-indigo-100 pl-4 py-2">
+                  <div className="flex justify-between items-center mb-2">
+                    <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">社团分类、类型与介绍</label>
+                    {!editingCategoryType && (
+                      <button 
+                        onClick={() => {
+                          setEditingCategoryType(true);
+                          setEditCategoryTypeForm({
+                            category: selectedClubDetail.category || 'wednesday',
+                            type: selectedClubDetail.type || 'activity',
+                            blocks: selectedClubDetail.blocks || [],
+                            intro: selectedClubDetail.intro || ''
+                          });
+                        }}
+                        className="text-indigo-600 text-xs font-bold hover:underline"
+                      >
+                        编辑
+                      </button>
+                    )}
+                  </div>
+                  {!editingCategoryType ? (
+                    <div className="mt-2 space-y-2 text-sm">
+                      {selectedClubDetail.intro && (
+                        <p className="text-gray-700">
+                          <span className="font-medium">介绍：</span>
+                          <span className="whitespace-pre-wrap">{selectedClubDetail.intro}</span>
+                        </p>
+                      )}
+                      <p className="text-gray-700">
+                        <span className="font-medium">分类：</span>
+                        {selectedClubDetail.category === 'daily' ? '日常社团' : 
+                         selectedClubDetail.category === 'both' ? '周三+日常' : '周三社团'}
+                      </p>
+                      {(selectedClubDetail.category === 'wednesday' || selectedClubDetail.category === 'both') && (
+                        <>
+                          <p className="text-gray-700">
+                            <span className="font-medium">类型：</span>
+                            {selectedClubDetail.type === 'academic' ? '学术社团' : '活动社团'}
+                          </p>
+                          {selectedClubDetail.blocks && selectedClubDetail.blocks.length > 0 && (
+                            <p className="text-gray-700">
+                              <span className="font-medium">板块：</span>
+                              {selectedClubDetail.blocks.map(b => b.replace('block', 'Block')).join('、')}
+                            </p>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">社团介绍</label>
+                        <textarea
+                          placeholder="一句话介绍社团..."
+                          value={editCategoryTypeForm.intro}
+                          onChange={e => setEditCategoryTypeForm({ ...editCategoryTypeForm, intro: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[72px] resize-y focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500"
+                          rows={3}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">社团分类</label>
+                        <div className="flex flex-wrap gap-3">
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="editCategory" checked={editCategoryTypeForm.category === 'daily'} onChange={() => setEditCategoryTypeForm({ ...editCategoryTypeForm, category: 'daily', type: 'activity', blocks: [] })} className="rounded-full border-gray-300" />
+                            <span className="text-sm">日常</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="editCategory" checked={editCategoryTypeForm.category === 'wednesday'} onChange={() => setEditCategoryTypeForm({ ...editCategoryTypeForm, category: 'wednesday' })} className="rounded-full border-gray-300" />
+                            <span className="text-sm">周三</span>
+                          </label>
+                          <label className="flex items-center gap-2 cursor-pointer">
+                            <input type="radio" name="editCategory" checked={editCategoryTypeForm.category === 'both'} onChange={() => setEditCategoryTypeForm({ ...editCategoryTypeForm, category: 'both' })} className="rounded-full border-gray-300" />
+                            <span className="text-sm">周三+日常</span>
+                          </label>
+                        </div>
+                      </div>
+                      {(editCategoryTypeForm.category === 'wednesday' || editCategoryTypeForm.category === 'both') && (
+                        <>
+                          <div>
+                            <label className="text-xs font-bold text-gray-600 mb-1 block">社团类型</label>
+                            <div className="flex gap-4">
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="editType" checked={editCategoryTypeForm.type === 'academic'} onChange={() => setEditCategoryTypeForm({ ...editCategoryTypeForm, type: 'academic' })} className="rounded-full border-gray-300" />
+                                <span className="text-sm">学术</span>
+                              </label>
+                              <label className="flex items-center gap-2 cursor-pointer">
+                                <input type="radio" name="editType" checked={editCategoryTypeForm.type === 'activity'} onChange={() => setEditCategoryTypeForm({ ...editCategoryTypeForm, type: 'activity', blocks: editCategoryTypeForm.blocks.filter(b => b !== 'block1') })} className="rounded-full border-gray-300" />
+                                <span className="text-sm">活动</span>
+                              </label>
+                            </div>
+                          </div>
+                          <div>
+                            <label className="text-xs font-bold text-gray-600 mb-1 block">活动板块（1～3个）</label>
+                            <div className="flex flex-wrap gap-2">
+                              {['block1', 'block2', 'block3', 'block4'].map(block => {
+                                const disabled = editCategoryTypeForm.type === 'activity' && block === 'block1';
+                                const checked = editCategoryTypeForm.blocks.includes(block);
+                                const canAdd = checked || editCategoryTypeForm.blocks.length < 3;
+                                return (
+                                  <label key={block} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-all ${disabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : canAdd ? 'cursor-pointer border-indigo-200 hover:bg-indigo-50 ' + (checked ? 'bg-indigo-100 text-indigo-700 border-indigo-400' : 'bg-gray-50 text-gray-600') : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200'}`}>
+                                    <input
+                                      type="checkbox"
+                                      disabled={disabled || !canAdd}
+                                      checked={checked}
+                                      onChange={() => {
+                                        if (disabled) return;
+                                        const next = checked ? editCategoryTypeForm.blocks.filter(b => b !== block) : [...editCategoryTypeForm.blocks, block].slice(-3);
+                                        setEditCategoryTypeForm({ ...editCategoryTypeForm, blocks: next });
+                                      }}
+                                      className="rounded border-gray-300"
+                                    />
+                                    {block === 'block1' ? 'Block1' : block.replace('block', 'Block')}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        </>
+                      )}
+                      <div className="flex gap-2 pt-2">
+                        <button onClick={handleUpdateCategoryType} className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-bold hover:bg-indigo-700">保存</button>
+                        <button onClick={() => setEditingCategoryType(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-300">取消</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               {/* 核心人员区块 */}
               <div className="border-l-4 border-amber-100 pl-4 py-2">
                 <label className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">核心人员</label>
@@ -892,8 +1065,11 @@ function ClubMatters({ user }) {
                 const labels = {
                   name: '社团名称', intro: '社团介绍', content: '活动内容', location: '活动地点',
                   time: '活动时间', duration: '活动时长', weeks: '持续周数', capacity: '人数限制',
-                  file: '附件', type: '社团类型', blocks: '活动板块'
+                  file: '附件', type: '社团类型', blocks: '活动板块', category: '社团分类'
                 };
+                
+                // 跳过 category、type、blocks、intro（已在顶部编辑区域显示）
+                if (['category', 'type', 'blocks', 'intro'].includes(key)) return null;
 
                 if (key === 'type') {
                   return (

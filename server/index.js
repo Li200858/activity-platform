@@ -210,7 +210,7 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: '该社团名称与已有用户名重复，请使用其他名称' });
     }
     
-    const category = (req.body.category === 'daily' || req.body.category === 'wednesday') ? req.body.category : 'wednesday';
+    const category = ['daily', 'wednesday', 'both'].includes(req.body.category) ? req.body.category : 'wednesday';
     let type = (req.body.type === 'academic' || req.body.type === 'activity') ? req.body.type : 'activity';
     let blocks = req.body.blocks;
     if (typeof blocks === 'string') {
@@ -218,8 +218,9 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
     }
     if (!Array.isArray(blocks)) blocks = [];
     blocks = blocks.filter(b => ['block1', 'block2', 'block3', 'block4'].includes(b));
-    if (category === 'wednesday') {
-      if (blocks.length < 1 || blocks.length > 3) return res.status(400).json({ error: '周三社团请选择 1～3 个活动板块' });
+    const hasWednesday = (c) => c === 'wednesday' || c === 'both';
+    if (hasWednesday(category)) {
+      if (blocks.length < 1 || blocks.length > 3) return res.status(400).json({ error: '周三/周三+日常社团请选择 1～3 个活动板块' });
       if (type === 'activity' && blocks.includes('block1')) return res.status(400).json({ error: '活动社团不能选择 Block1（学术固定时段）' });
     } else {
       type = 'activity';
@@ -297,11 +298,13 @@ app.get('/api/clubs/approved', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+const clubHasWednesday = (c) => (c || 'wednesday') === 'wednesday' || (c === 'both');
+
 app.get('/api/clubs/my/:userID', async (req, res) => {
   try {
     const members = await ClubMember.find({ userID: req.params.userID, status: { $ne: 'rejected' } }).populate('clubID');
-    const wednesday = members.find(m => m.clubID && (m.clubID.category || 'wednesday') === 'wednesday');
-    const daily = members.filter(m => m.clubID && m.clubID.category === 'daily');
+    const wednesday = members.find(m => m.clubID && clubHasWednesday(m.clubID.category));
+    const daily = members.filter(m => m.clubID && m.clubID.category === 'daily'); // 仅纯日常，不含 both（both 已在周三显示）
     const format = (m) => {
       const result = m.toObject();
       result.Club = result.clubID;
@@ -386,18 +389,84 @@ app.put('/api/clubs/:id/core-members', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 更新社团分类、类型与介绍（仅创建者或管理员）
+app.put('/api/clubs/:id/update-category-type', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID: operatorID, category, type, blocks, intro } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 userID' });
+    
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+    const isFounder = club.founderID === operatorID;
+    const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
+    if (!isFounder && !isAdmin) return res.status(403).json({ error: '仅社团创建者或管理员可修改' });
+    
+    // 验证 category
+    if (category !== undefined) {
+      if (!['daily', 'wednesday', 'both'].includes(category)) {
+        return res.status(400).json({ error: 'category 必须是 daily、wednesday 或 both' });
+      }
+      club.category = category;
+    }
+    
+    // 验证 type 和 blocks（如果 category 是 wednesday 或 both）
+    const hasWed = clubHasWednesday(club.category);
+    if (hasWed) {
+      if (type !== undefined) {
+        if (!['academic', 'activity'].includes(type)) {
+          return res.status(400).json({ error: 'type 必须是 academic 或 activity' });
+        }
+        club.type = type;
+      }
+      
+      if (blocks !== undefined) {
+        let blocksArray = blocks;
+        if (typeof blocks === 'string') {
+          try { blocksArray = JSON.parse(blocks); } catch (e) { blocksArray = []; }
+        }
+        if (!Array.isArray(blocksArray)) blocksArray = [];
+        blocksArray = blocksArray.filter(b => ['block1', 'block2', 'block3', 'block4'].includes(b));
+        
+        if (blocksArray.length < 1 || blocksArray.length > 3) {
+          return res.status(400).json({ error: '周三/周三+日常社团请选择 1～3 个活动板块' });
+        }
+        if (club.type === 'activity' && blocksArray.includes('block1')) {
+          return res.status(400).json({ error: '活动社团不能选择 Block1（学术固定时段）' });
+        }
+        club.blocks = blocksArray;
+      }
+    } else {
+      // 日常社团：type 固定为 activity，blocks 为空
+      club.type = 'activity';
+      club.blocks = [];
+    }
+    
+    if (intro !== undefined) club.intro = String(intro || '').trim();
+    
+    await club.save();
+    
+    const clubObj = club.toObject();
+    clubObj.id = club._id.toString();
+    res.json({ success: true, club: clubObj });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/clubs/register', async (req, res) => {
   try {
     const { userID, clubID } = req.body;
     const club = await Club.findById(clubID);
     if (!club) return res.status(404).json({ error: '社团不存在' });
     
-    const isWednesday = (club.category || 'wednesday') === 'wednesday';
-    if (isWednesday) {
-      const anyWednesday = await ClubMember.findOne({ userID, status: { $ne: 'rejected' } }).populate('clubID');
-      if (anyWednesday && anyWednesday.clubID && (anyWednesday.clubID.category || 'wednesday') === 'wednesday') {
-        if (anyWednesday.clubID._id.toString() === clubID) return res.status(400).json({ error: '您已报名该社团' });
-        return res.status(400).json({ error: '您已有周三社团，仅可加入一个；如需更换请使用轮换' });
+    const isWednesdayOrBoth = clubHasWednesday(club.category);
+    if (isWednesdayOrBoth) {
+      const anyWed = await ClubMember.findOne({ userID, status: { $ne: 'rejected' } }).populate('clubID');
+      if (anyWed && anyWed.clubID && clubHasWednesday(anyWed.clubID.category)) {
+        if (anyWed.clubID._id.toString() === clubID) return res.status(400).json({ error: '您已报名该社团' });
+        return res.status(400).json({ error: '您已有周三社团（或周三+日常社团），仅可加入一个；如需更换请使用轮换' });
       }
     } else {
       const alreadyIn = await ClubMember.findOne({ userID, clubID: club._id, status: { $ne: 'rejected' } });
@@ -463,11 +532,11 @@ app.post('/api/clubs/rotate', async (req, res) => {
   try {
     if (!isRotationAllowed()) return res.status(403).json({ error: '不在轮换时间' });
     const members = await ClubMember.find({ userID: req.body.userID }).populate('clubID');
-    const member = members.find(m => m.clubID && (m.clubID.category || 'wednesday') === 'wednesday');
+    const member = members.find(m => m.clubID && clubHasWednesday(m.clubID.category));
     if (!member) return res.status(400).json({ error: '请先报名周三社团' });
     const newClub = await Club.findById(req.body.newClubID);
     if (!newClub) return res.status(404).json({ error: '新社团不存在' });
-    if ((newClub.category || 'wednesday') !== 'wednesday') return res.status(400).json({ error: '只能轮换到周三社团' });
+    if (!clubHasWednesday(newClub.category)) return res.status(400).json({ error: '只能轮换到周三或周三+日常社团' });
 
     const semester = getCurrentSemester();
     let record = await SemesterRotation.findOne({ userID: req.body.userID, semester });

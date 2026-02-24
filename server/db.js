@@ -38,8 +38,8 @@ const ClubSchema = new mongoose.Schema({
   file: { type: String },
   founderID: { type: String },
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
-  // 社团分类：日常（周三除外，可报多个）| 周三（两时段4 block，限一个+5次轮换）
-  category: { type: String, enum: ['daily', 'wednesday'], default: 'wednesday' },
+  // 社团分类：日常 | 周三 | both（既是周三也有日常，占周三名额且出现在两个列表）
+  category: { type: String, enum: ['daily', 'wednesday', 'both'], default: 'wednesday' },
   // 改革方案：社团类型与时间板块（仅周三社团使用）
   type: { type: String, enum: ['academic', 'activity'], default: 'activity' },
   blocks: { type: [String], default: [] }, // block1~block4，最多选3个
