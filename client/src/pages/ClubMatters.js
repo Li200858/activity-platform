@@ -2,11 +2,21 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 
 function ClubMatters({ user }) {
-  const [view, setView] = useState('menu'); // menu, rotation, registration, creation, members
+  const [view, setView] = useState('menu'); // menu, rotation, registration, creation, members, attendance, venue
   const [clubs, setClubs] = useState([]);
   const [myClub, setMyClub] = useState(null);
   const [selectedClubDetail, setSelectedClubDetail] = useState(null);
   const [members, setMembers] = useState(null); // { clubName, members: [] }
+  const [attendanceClub, setAttendanceClub] = useState(null);
+  const [attendanceSessions, setAttendanceSessions] = useState([]);
+  const [selectedAttendanceSession, setSelectedAttendanceSession] = useState(null);
+  const [attendanceMembers, setAttendanceMembers] = useState([]);
+  const [venueClub, setVenueClub] = useState(null);
+  const [venueRequests, setVenueRequests] = useState([]);
+  const [venueSchedules, setVenueSchedules] = useState([]);
+  const [venueForm, setVenueForm] = useState({ semester: '', blocks: [], note: '' });
+  const [newAttendanceDate, setNewAttendanceDate] = useState('');
+  const [newAttendanceNote, setNewAttendanceNote] = useState('');
   const [formData, setFormData] = useState({
     name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '',
     type: 'activity', blocks: [] // 社团类型: academic | activity；活动板块: block1~block4 最多3个
@@ -211,6 +221,103 @@ function ClubMatters({ user }) {
       setClubs(res.data);
     } catch (err) {
       alert(err.response?.data?.error || '移除失败');
+    }
+  };
+
+  const canManageClub = (club) => {
+    if (!club || !user) return false;
+    if (club.founderID === user.userID) return true;
+    if (user.role === 'admin' || user.role === 'super_admin') return true;
+    return (club.coreMembers || []).some(m => m.userID === user.userID);
+  };
+
+  const fetchAttendanceSessions = async (clubId) => {
+    try {
+      const res = await api.get(`/clubs/${clubId}/attendance-sessions?userID=${user.userID}`);
+      setAttendanceSessions(res.data || []);
+    } catch (e) {
+      setAttendanceSessions([]);
+    }
+  };
+
+  const createAttendanceSession = async () => {
+    if (!attendanceClub?.id || !newAttendanceDate.trim()) return alert('请选择日期');
+    try {
+      await api.post(`/clubs/${attendanceClub.id}/attendance-sessions`, {
+        userID: user.userID,
+        date: newAttendanceDate,
+        note: newAttendanceNote
+      });
+      setNewAttendanceDate('');
+      setNewAttendanceNote('');
+      fetchAttendanceSessions(attendanceClub.id);
+    } catch (err) {
+      alert(err.response?.data?.error || '发起点名失败');
+    }
+  };
+
+  const loadAttendanceSession = async (sessionId) => {
+    if (!attendanceClub?.id) return;
+    try {
+      const res = await api.get(`/clubs/${attendanceClub.id}/attendance-sessions/${sessionId}?userID=${user.userID}`);
+      setSelectedAttendanceSession(res.data);
+      setAttendanceMembers(res.data.members || []);
+    } catch (e) {
+      alert('加载失败');
+    }
+  };
+
+  const saveAttendance = async () => {
+    if (!attendanceClub?.id || !selectedAttendanceSession?.id) return;
+    const presentUserIDs = attendanceMembers.filter(m => m.present).map(m => m.userID);
+    try {
+      await api.put(`/clubs/${attendanceClub.id}/attendance-sessions/${selectedAttendanceSession.id}`, {
+        userID: user.userID,
+        presentUserIDs
+      });
+      alert('已保存');
+      loadAttendanceSession(selectedAttendanceSession.id);
+    } catch (err) {
+      alert(err.response?.data?.error || '保存失败');
+    }
+  };
+
+  const exportAttendance = (type) => {
+    const base = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+    window.open(`${base}/api/clubs/${attendanceClub.id}/attendance-sessions/${selectedAttendanceSession.id}/export?userID=${user.userID}&type=${type}`, '_blank');
+  };
+
+  const fetchVenueRequests = async (clubId) => {
+    try {
+      const res = await api.get(`/clubs/${clubId}/venue-requests?userID=${user.userID}`);
+      setVenueRequests(res.data || []);
+    } catch (e) {
+      setVenueRequests([]);
+    }
+  };
+
+  const fetchVenueSchedules = async (clubId) => {
+    try {
+      const res = await api.get(`/clubs/venue-schedule?clubID=${clubId}`);
+      setVenueSchedules(res.data || []);
+    } catch (e) {
+      setVenueSchedules([]);
+    }
+  };
+
+  const submitVenueRequest = async () => {
+    if (!venueClub?.id || !venueForm.semester) return alert('请选择学期');
+    try {
+      await api.post(`/clubs/${venueClub.id}/venue-requests`, {
+        userID: user.userID,
+        semester: venueForm.semester,
+        blocks: venueForm.blocks,
+        note: venueForm.note
+      });
+      setVenueForm({ semester: '', blocks: [], note: '' });
+      fetchVenueRequests(venueClub.id);
+    } catch (err) {
+      alert(err.response?.data?.error || '提交失败');
     }
   };
 
@@ -560,6 +667,106 @@ function ClubMatters({ user }) {
             <button type="submit" className="w-full mt-8 bg-purple-600 text-white py-4 rounded-2xl font-black shadow-xl shadow-purple-100 hover:bg-purple-700 hover:scale-[1.01] active:scale-[0.99] transition-all">提交社团创建申请</button>
           </form>
         )}
+
+        {view === 'attendance' && attendanceClub && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black text-gray-800">点名记录 · {attendanceClub.name}</h2>
+              <button onClick={() => { setView('menu'); setAttendanceClub(null); setSelectedAttendanceSession(null); }} className="text-xs font-bold text-gray-400 hover:text-amber-600">返回菜单</button>
+            </div>
+            <div className="mb-4 p-4 bg-amber-50 rounded-xl border border-amber-200">
+              <p className="text-xs font-bold text-amber-800 mb-2">发起点名</p>
+              <div className="flex gap-2 flex-wrap items-end">
+                <input type="date" value={newAttendanceDate} onChange={e => setNewAttendanceDate(e.target.value)} className="bg-white border rounded-lg px-3 py-2 text-sm" />
+                <input type="text" placeholder="备注（可选）" value={newAttendanceNote} onChange={e => setNewAttendanceNote(e.target.value)} className="bg-white border rounded-lg px-3 py-2 text-sm flex-1 min-w-[120px]" />
+                <button onClick={createAttendanceSession} className="bg-amber-500 text-white px-4 py-2 rounded-lg font-bold text-sm">发起</button>
+              </div>
+            </div>
+            <div className="space-y-2 mb-4">
+              {attendanceSessions.map(s => (
+                <div key={s.id} className="flex justify-between items-center bg-gray-50 p-3 rounded-xl border border-gray-100">
+                  <span className="font-medium">{s.date} {s.note && `· ${s.note}`}</span>
+                  <div className="flex gap-2">
+                    <button onClick={() => loadAttendanceSession(s.id)} className="text-amber-600 text-xs font-bold">编辑</button>
+                    <a href={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/clubs/${attendanceClub.id}/attendance-sessions/${s.id}/export?userID=${user.userID}&type=all`} className="text-green-600 text-xs font-bold" target="_blank" rel="noopener noreferrer">导出出勤</a>
+                    <a href={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/clubs/${attendanceClub.id}/attendance-sessions/${s.id}/export?userID=${user.userID}&type=absent`} className="text-red-600 text-xs font-bold" target="_blank" rel="noopener noreferrer">导出缺席</a>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {selectedAttendanceSession && (
+              <div className="border-t pt-4 mt-4">
+                <p className="text-sm font-bold text-gray-700 mb-2">勾选出勤 · {selectedAttendanceSession.date}</p>
+                <div className="space-y-2 max-h-64 overflow-y-auto">
+                  {attendanceMembers.map(m => (
+                    <label key={m.userID} className="flex items-center gap-3 p-2 bg-white rounded-lg border">
+                      <input type="checkbox" checked={!!m.present} onChange={e => setAttendanceMembers(prev => prev.map(x => x.userID === m.userID ? { ...x, present: e.target.checked } : x))} />
+                      <span>{m.name}</span>
+                      <span className="text-gray-400 text-xs">{m.class} · {m.userID}</span>
+                    </label>
+                  ))}
+                </div>
+                <div className="flex gap-2 mt-3">
+                  <button onClick={saveAttendance} className="bg-amber-500 text-white px-4 py-2 rounded-lg font-bold text-sm">保存</button>
+                  <button onClick={() => setSelectedAttendanceSession(null)} className="text-gray-500 text-sm">关闭</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {view === 'venue' && venueClub && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-xl font-black text-gray-800">场地申请与排期 · {venueClub.name}</h2>
+              <button onClick={() => { setView('menu'); setVenueClub(null); }} className="text-xs font-bold text-gray-400 hover:text-teal-600">返回菜单</button>
+            </div>
+            <div className="mb-6 p-4 bg-teal-50 rounded-xl border border-teal-200">
+              <p className="text-xs font-bold text-teal-800 mb-2">提交场地申请</p>
+              <div className="space-y-2">
+                <select value={venueForm.semester} onChange={e => setVenueForm(f => ({ ...f, semester: e.target.value }))} className="w-full bg-white border rounded-lg px-3 py-2 text-sm">
+                  <option value="">选择学期</option>
+                  <option value="2026-spring">2026年春季</option>
+                  <option value="2026-fall">2026年秋季</option>
+                  <option value="2025-fall">2025年秋季</option>
+                </select>
+                <div className="flex flex-wrap gap-2">
+                  {['block1', 'block2', 'block3', 'block4'].map(b => (
+                    <label key={b} className="flex items-center gap-1 text-sm">
+                      <input type="checkbox" checked={venueForm.blocks.includes(b)} onChange={e => setVenueForm(f => ({ ...f, blocks: e.target.checked ? [...f.blocks, b] : f.blocks.filter(x => x !== b) }))} />
+                      {b}
+                    </label>
+                  ))}
+                </div>
+                <input type="text" placeholder="备注（可选）" value={venueForm.note} onChange={e => setVenueForm(f => ({ ...f, note: e.target.value }))} className="w-full bg-white border rounded-lg px-3 py-2 text-sm" />
+                <button onClick={submitVenueRequest} className="bg-teal-600 text-white px-4 py-2 rounded-lg font-bold text-sm">提交申请</button>
+              </div>
+            </div>
+            <div className="mb-4">
+              <h3 className="text-sm font-bold text-gray-700 mb-2">我的申请</h3>
+              {venueRequests.length === 0 ? <p className="text-gray-400 text-sm">暂无</p> : (
+                <ul className="space-y-1 text-sm">
+                  {venueRequests.map(r => (
+                    <li key={r.id} className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+                      <span>{r.semester} · {r.blocks?.join(',') || '-'}</span>
+                      <span className={`text-xs font-bold ${r.status === 'approved' ? 'text-green-600' : r.status === 'rejected' ? 'text-red-600' : 'text-orange-600'}`}>{r.status === 'pending' ? '待审核' : r.status === 'approved' ? '已通过' : '已拒绝'}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-gray-700 mb-2">本学期排期</h3>
+              {venueSchedules.length === 0 ? <p className="text-gray-400 text-sm">暂无排期</p> : (
+                <ul className="space-y-1 text-sm">
+                  {venueSchedules.map(s => (
+                    <li key={s.id} className="p-2 bg-teal-50 rounded-lg border border-teal-100">{s.date} · {s.block} · {s.venueName}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 社团详情模态框 */}
@@ -668,8 +875,8 @@ function ClubMatters({ user }) {
               })}
             </div>
 
-            <div className="p-8 bg-gray-50 flex justify-between items-center">
-              <div className="flex gap-2">
+            <div className="p-8 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
+              <div className="flex gap-2 flex-wrap">
                 {/* 参与人员按钮 - 仅创建者和管理员可见 */}
                 {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                   <button 
@@ -680,6 +887,35 @@ function ClubMatters({ user }) {
                     className="px-6 py-3 bg-purple-600 text-white rounded-2xl font-black hover:bg-purple-700 transition-all"
                   >
                     参与人员
+                  </button>
+                )}
+                {/* 点名记录 - 核心人员/创建者/管理员 */}
+                {canManageClub(selectedClubDetail) && (
+                  <button 
+                    onClick={() => {
+                      setAttendanceClub(selectedClubDetail);
+                      setSelectedClubDetail(null);
+                      setView('attendance');
+                      fetchAttendanceSessions(selectedClubDetail.id);
+                    }}
+                    className="px-6 py-3 bg-amber-500 text-white rounded-2xl font-black hover:bg-amber-600 transition-all"
+                  >
+                    点名记录
+                  </button>
+                )}
+                {/* 场地申请与排期 - 创建者/管理员 */}
+                {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                  <button 
+                    onClick={() => {
+                      setVenueClub(selectedClubDetail);
+                      setSelectedClubDetail(null);
+                      setView('venue');
+                      fetchVenueRequests(selectedClubDetail.id);
+                      fetchVenueSchedules(selectedClubDetail.id);
+                    }}
+                    className="px-6 py-3 bg-teal-600 text-white rounded-2xl font-black hover:bg-teal-700 transition-all"
+                  >
+                    场地申请与排期
                   </button>
                 )}
                 {/* 下载Excel按钮 - 仅创建者和管理员可见 */}

@@ -116,6 +116,39 @@ const SemesterRotationSchema = new mongoose.Schema({
 }, { timestamps: true });
 SemesterRotationSchema.index({ userID: 1, semester: 1 }, { unique: true });
 
+// 点名场次（核心人员发起的某次点名）
+const ClubAttendanceSessionSchema = new mongoose.Schema({
+  clubID: { type: mongoose.Schema.Types.ObjectId, ref: 'Club', required: true },
+  date: { type: String, required: true }, // YYYY-MM-DD
+  note: { type: String },
+  recordedByUserID: { type: String, required: true }
+}, { timestamps: true });
+
+// 出勤记录（只存出席的；未在此列表的成员视为缺席）
+const ClubAttendanceRecordSchema = new mongoose.Schema({
+  sessionID: { type: mongoose.Schema.Types.ObjectId, ref: 'ClubAttendanceSession', required: true },
+  userID: { type: String, required: true }
+}, { timestamps: true });
+ClubAttendanceRecordSchema.index({ sessionID: 1, userID: 1 }, { unique: true });
+
+// 场地申请（社团提交）
+const ClubVenueRequestSchema = new mongoose.Schema({
+  clubID: { type: mongoose.Schema.Types.ObjectId, ref: 'Club', required: true },
+  semester: { type: String, required: true }, // 2026-spring
+  blocks: { type: [String], default: [] },   // ['block2','block3']
+  note: { type: String },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }
+}, { timestamps: true });
+
+// 场地排期（管理员排期后的结果）
+const ClubVenueScheduleSchema = new mongoose.Schema({
+  clubID: { type: mongoose.Schema.Types.ObjectId, ref: 'Club', required: true },
+  semester: { type: String, required: true },
+  date: { type: String, required: true },   // YYYY-MM-DD
+  block: { type: String, required: true },  // block1~block4
+  venueName: { type: String, required: true }
+}, { timestamps: true });
+
 // 创建模型
 const User = mongoose.model('User', UserSchema);
 const Club = mongoose.model('Club', ClubSchema);
@@ -125,6 +158,10 @@ const ActivityRegistration = mongoose.model('ActivityRegistration', ActivityRegi
 const Notification = mongoose.model('Notification', NotificationSchema);
 const Feedback = mongoose.model('Feedback', FeedbackSchema);
 const SemesterRotation = mongoose.model('SemesterRotation', SemesterRotationSchema);
+const ClubAttendanceSession = mongoose.model('ClubAttendanceSession', ClubAttendanceSessionSchema);
+const ClubAttendanceRecord = mongoose.model('ClubAttendanceRecord', ClubAttendanceRecordSchema);
+const ClubVenueRequest = mongoose.model('ClubVenueRequest', ClubVenueRequestSchema);
+const ClubVenueSchedule = mongoose.model('ClubVenueSchedule', ClubVenueScheduleSchema);
 
 // 为了兼容Sequelize的API，创建一些包装方法
 const sequelize = {
@@ -155,5 +192,9 @@ module.exports = {
   ActivityRegistration,
   Feedback,
   Notification,
-  SemesterRotation
+  SemesterRotation,
+  ClubAttendanceSession,
+  ClubAttendanceRecord,
+  ClubVenueRequest,
+  ClubVenueSchedule
 };

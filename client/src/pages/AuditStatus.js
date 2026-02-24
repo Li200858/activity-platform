@@ -8,10 +8,22 @@ function AuditStatus({ user }) {
   const [selectedDetail, setSelectedDetail] = useState(null); // 控制弹窗显示
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [venueRequestsAll, setVenueRequestsAll] = useState([]);
+  const [venueSchedulesAll, setVenueSchedulesAll] = useState([]);
+  const [venueScheduleForm, setVenueScheduleForm] = useState({ clubID: '', semester: '', date: '', block: '', venueName: '' });
+  const [clubsForVenue, setClubsForVenue] = useState([]);
 
   useEffect(() => {
     fetchAuditStatus();
   }, []);
+
+  useEffect(() => {
+    if (data && (user.role === 'admin' || user.role === 'super_admin')) {
+      api.get(`/clubs/venue-requests/all?userID=${user.userID}`).then(r => setVenueRequestsAll(r.data || [])).catch(() => setVenueRequestsAll([]));
+      api.get('/clubs/venue-schedule').then(r => setVenueSchedulesAll(r.data || [])).catch(() => setVenueSchedulesAll([]));
+      api.get('/clubs/approved').then(r => setClubsForVenue(r.data || [])).catch(() => setClubsForVenue([]));
+    }
+  }, [data, user?.userID, user?.role]);
 
   // 添加键盘快捷键：按R键刷新
   useEffect(() => {
@@ -75,9 +87,35 @@ function AuditStatus({ user }) {
     try {
       await api.post('/admin/set-role', { targetUserID, role, operatorID: user.userID });
       alert('权限设置成功');
-      handleSearchUser(); // 刷新搜索列表显示最新身份
+      handleSearchUser();
     } catch (err) {
       alert(err.response?.data?.error || '设置失败');
+    }
+  };
+
+  const handleVenueRequestStatus = async (rid, status) => {
+    try {
+      await api.put(`/clubs/venue-requests/${rid}`, { userID: user.userID, status });
+      const res = await api.get(`/clubs/venue-requests/all?userID=${user.userID}`);
+      setVenueRequestsAll(res.data || []);
+    } catch (err) {
+      alert(err.response?.data?.error || '操作失败');
+    }
+  };
+
+  const handleAddVenueSchedule = async (e) => {
+    e.preventDefault();
+    if (!venueScheduleForm.clubID || !venueScheduleForm.semester || !venueScheduleForm.date || !venueScheduleForm.block || !venueScheduleForm.venueName.trim()) {
+      alert('请填写完整');
+      return;
+    }
+    try {
+      await api.post('/clubs/venue-schedule', { ...venueScheduleForm, userID: user.userID });
+      setVenueScheduleForm({ clubID: '', semester: '', date: '', block: '', venueName: '' });
+      const res = await api.get('/clubs/venue-schedule');
+      setVenueSchedulesAll(res.data || []);
+    } catch (err) {
+      alert(err.response?.data?.error || '添加失败');
     }
   };
 
@@ -237,6 +275,69 @@ function AuditStatus({ user }) {
               </div>
             </div>
           )}
+
+          {/* 场地管理：申请审核 + 排期（管理员） */}
+          <div className="mt-12 pt-8 border-t-2 border-dashed border-gray-100">
+            <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">场地管理</h3>
+            <section className="mb-6">
+              <h4 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-widest">场地申请审核</h4>
+              {venueRequestsAll.length === 0 ? <p className="text-gray-400 text-sm">暂无申请</p> : (
+                <div className="space-y-2">
+                  {venueRequestsAll.map(r => (
+                    <div key={r.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-xl border">
+                      <span className="font-medium">{r.clubName || r.clubID?.name} · {r.semester} · {r.blocks?.join(',') || '-'}</span>
+                      <div className="flex gap-2">
+                        {r.status === 'pending' && (
+                          <>
+                            <button onClick={() => handleVenueRequestStatus(r.id, 'approved')} className="bg-green-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold">通过</button>
+                            <button onClick={() => handleVenueRequestStatus(r.id, 'rejected')} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold">拒绝</button>
+                          </>
+                        )}
+                        <span className={`text-xs font-bold ${r.status === 'approved' ? 'text-green-600' : r.status === 'rejected' ? 'text-red-600' : 'text-orange-600'}`}>
+                          {r.status === 'pending' ? '待审核' : r.status === 'approved' ? '已通过' : '已拒绝'}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            <section>
+              <h4 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-widest">添加排期</h4>
+              <form onSubmit={handleAddVenueSchedule} className="flex flex-wrap gap-2 items-end">
+                <select value={venueScheduleForm.clubID} onChange={e => setVenueScheduleForm(f => ({ ...f, clubID: e.target.value }))} className="bg-gray-50 border rounded-lg px-3 py-2 text-sm" required>
+                  <option value="">选择社团</option>
+                  {clubsForVenue.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                </select>
+                <select value={venueScheduleForm.semester} onChange={e => setVenueScheduleForm(f => ({ ...f, semester: e.target.value }))} className="bg-gray-50 border rounded-lg px-3 py-2 text-sm" required>
+                  <option value="">学期</option>
+                  <option value="2026-spring">2026春</option>
+                  <option value="2026-fall">2026秋</option>
+                  <option value="2025-fall">2025秋</option>
+                </select>
+                <input type="date" value={venueScheduleForm.date} onChange={e => setVenueScheduleForm(f => ({ ...f, date: e.target.value }))} className="bg-gray-50 border rounded-lg px-3 py-2 text-sm" required />
+                <select value={venueScheduleForm.block} onChange={e => setVenueScheduleForm(f => ({ ...f, block: e.target.value }))} className="bg-gray-50 border rounded-lg px-3 py-2 text-sm" required>
+                  <option value="">板块</option>
+                  <option value="block1">Block1</option>
+                  <option value="block2">Block2</option>
+                  <option value="block3">Block3</option>
+                  <option value="block4">Block4</option>
+                </select>
+                <input type="text" placeholder="场地名称" value={venueScheduleForm.venueName} onChange={e => setVenueScheduleForm(f => ({ ...f, venueName: e.target.value }))} className="bg-gray-50 border rounded-lg px-3 py-2 text-sm min-w-[100px]" required />
+                <button type="submit" className="bg-teal-600 text-white px-4 py-2 rounded-lg font-bold text-sm">添加</button>
+              </form>
+            </section>
+            <section className="mt-4">
+              <h4 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-widest">全部排期</h4>
+              {venueSchedulesAll.length === 0 ? <p className="text-gray-400 text-sm">暂无</p> : (
+                <ul className="space-y-1 text-sm">
+                  {venueSchedulesAll.map(s => (
+                    <li key={s.id} className="p-2 bg-teal-50 rounded-lg border border-teal-100">{s.clubName} · {s.date} · {s.block} · {s.venueName}</li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
         </div>
       )}
 

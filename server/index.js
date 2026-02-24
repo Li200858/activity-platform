@@ -9,7 +9,8 @@ const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 const XLSX = require('xlsx');
 const { 
-  mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification, SemesterRotation 
+  mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification, SemesterRotation,
+  ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest, ClubVenueSchedule
 } = require('./db');
 
 const app = express();
@@ -1195,6 +1196,239 @@ app.get('/api/clubs/:id/members', async (req, res) => {
     console.error('获取成员列表失败:', e);
     res.status(500).json({ error: e.message });
   }
+});
+
+// ---------- 点名/出勤 ----------
+function isClubCoreOrAdmin(club, userID, user) {
+  if (!club || !user) return false;
+  if (user.role === 'admin' || user.role === 'super_admin') return true;
+  if (club.founderID === userID) return true;
+  const coreIDs = club.coreMemberIDs || [];
+  return coreIDs.includes(userID);
+}
+
+app.get('/api/clubs/:id/attendance-sessions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID } = req.query;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (!isClubCoreOrAdmin(club, userID, user)) return res.status(403).json({ error: '仅核心人员或管理员可查看' });
+    const sessions = await ClubAttendanceSession.find({ clubID: club._id }).sort({ date: -1 }).lean();
+    const list = sessions.map(s => ({ ...s, id: s._id.toString() }));
+    res.json(list);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/clubs/:id/attendance-sessions', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID, date, note } = req.body;
+    if (!userID || !date) return res.status(400).json({ error: '缺少 date 或 userID' });
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (!isClubCoreOrAdmin(club, userID, user)) return res.status(403).json({ error: '仅核心人员或管理员可发起点名' });
+    const session = await ClubAttendanceSession.create({ clubID: club._id, date, note: note || '', recordedByUserID: userID });
+    res.json({ ...session.toObject(), id: session._id.toString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/clubs/:id/attendance-sessions/:sessionId', async (req, res) => {
+  try {
+    const { id, sessionId } = req.params;
+    const { userID } = req.query;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (!isClubCoreOrAdmin(club, userID, user)) return res.status(403).json({ error: '无权限' });
+    const session = await ClubAttendanceSession.findById(sessionId);
+    if (!session || session.clubID.toString() !== id) return res.status(404).json({ error: '点名场次不存在' });
+    const presentUserIDs = (await ClubAttendanceRecord.find({ sessionID: session._id }).lean()).map(r => r.userID);
+    const members = await ClubMember.find({ clubID: club._id, status: 'approved' });
+    const memberUserIDs = members.map(m => m.userID);
+    const users = await User.find({ userID: { $in: memberUserIDs } }).select('name class userID').lean();
+    const userMap = new Map(users.map(u => [u.userID, u]));
+    const list = memberUserIDs.map(uid => ({
+      userID: uid,
+      name: userMap.get(uid)?.name || '',
+      class: userMap.get(uid)?.class || '',
+      present: presentUserIDs.includes(uid)
+    }));
+    res.json({ ...session.toObject(), id: session._id.toString(), presentUserIDs, members: list });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/clubs/:id/attendance-sessions/:sessionId', async (req, res) => {
+  try {
+    const { id, sessionId } = req.params;
+    const { userID, presentUserIDs } = req.body;
+    if (!userID || !Array.isArray(presentUserIDs)) return res.status(400).json({ error: '缺少 userID 或 presentUserIDs' });
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (!isClubCoreOrAdmin(club, userID, user)) return res.status(403).json({ error: '无权限' });
+    const session = await ClubAttendanceSession.findById(sessionId);
+    if (!session || session.clubID.toString() !== id) return res.status(404).json({ error: '点名场次不存在' });
+    await ClubAttendanceRecord.deleteMany({ sessionID: session._id });
+    for (const uid of presentUserIDs) {
+      await ClubAttendanceRecord.create({ sessionID: session._id, userID: uid });
+    }
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/clubs/:id/attendance-sessions/:sessionId/export', async (req, res) => {
+  try {
+    const { id, sessionId } = req.params;
+    const { userID, type } = req.query; // type: all | absent
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (!isClubCoreOrAdmin(club, userID, user)) return res.status(403).json({ error: '无权限' });
+    const session = await ClubAttendanceSession.findById(sessionId);
+    if (!session || session.clubID.toString() !== id) return res.status(404).json({ error: '点名场次不存在' });
+    const presentUserIDs = (await ClubAttendanceRecord.find({ sessionID: session._id }).lean()).map(r => r.userID);
+    const members = await ClubMember.find({ clubID: club._id, status: 'approved' });
+    const memberUserIDs = members.map(m => m.userID);
+    const users = await User.find({ userID: { $in: memberUserIDs } }).select('name class userID').lean();
+    const userMap = new Map(users.map(u => [u.userID, u]));
+    let rows = memberUserIDs.map(uid => ({
+      '姓名': userMap.get(uid)?.name || '',
+      '班级': userMap.get(uid)?.class || '',
+      '用户ID': uid,
+      '出勤': presentUserIDs.includes(uid) ? '出勤' : '缺席'
+    }));
+    if (type === 'absent') rows = rows.filter(r => r['出勤'] === '缺席');
+    const worksheet = XLSX.utils.json_to_sheet(rows.length ? rows : [{ '姓名': '无', '班级': '', '用户ID': '', '出勤': '' }]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, type === 'absent' ? '缺席名单' : '出勤名单');
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(club.name)}_${session.date}_${type === 'absent' ? '缺席' : '出勤'}.xlsx"`);
+    res.send(buffer);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- 场地申请与排期 ----------
+function getCurrentSemesterForVenue() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  if (m >= 9) return `${y}-fall`;
+  if (m === 1) return `${y - 1}-fall`;
+  return `${y}-spring`;
+}
+
+app.get('/api/clubs/:id/venue-requests', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID } = req.query;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    const list = await ClubVenueRequest.find({ clubID: club._id }).sort({ createdAt: -1 }).lean();
+    res.json(list.map(r => ({ ...r, id: r._id.toString() })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/clubs/:id/venue-requests', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID, semester, blocks, note } = req.body;
+    if (!userID || !semester) return res.status(400).json({ error: '请选择学期' });
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (club.founderID !== userID && user.role !== 'admin' && user.role !== 'super_admin') return res.status(403).json({ error: '仅社团创建者或管理员可提交' });
+    const reqDoc = await ClubVenueRequest.create({
+      clubID: club._id,
+      semester,
+      blocks: Array.isArray(blocks) ? blocks : [],
+      note: note || '',
+      status: 'pending'
+    });
+    res.json({ ...reqDoc.toObject(), id: reqDoc._id.toString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/clubs/venue-requests/all', async (req, res) => {
+  try {
+    const { userID } = req.query;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (user.role !== 'admin' && user.role !== 'super_admin') return res.status(403).json({ error: '仅管理员可查看' });
+    const list = await ClubVenueRequest.find().populate('clubID', 'name').sort({ createdAt: -1 }).lean();
+    res.json(list.map(r => ({ ...r, id: r._id.toString(), clubName: r.clubID?.name })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/clubs/venue-requests/:rid', async (req, res) => {
+  try {
+    const { rid } = req.params;
+    const { userID, status } = req.body;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (user.role !== 'admin' && user.role !== 'super_admin') return res.status(403).json({ error: '仅管理员可操作' });
+    const r = await ClubVenueRequest.findById(rid);
+    if (!r) return res.status(404).json({ error: '申请不存在' });
+    r.status = status;
+    await r.save();
+    res.json({ ...r.toObject(), id: r._id.toString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/clubs/venue-schedule', async (req, res) => {
+  try {
+    const { semester, clubID } = req.query;
+    const filter = {};
+    if (semester) filter.semester = semester;
+    if (clubID) filter.clubID = clubID;
+    const list = await ClubVenueSchedule.find(filter).populate('clubID', 'name').sort({ date: 1, block: 1 }).lean();
+    res.json(list.map(s => ({
+      ...s,
+      id: s._id.toString(),
+      clubName: s.clubID?.name,
+      clubID: s.clubID?._id?.toString()
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/clubs/venue-schedule', async (req, res) => {
+  try {
+    const { userID, clubID, semester, date, block, venueName } = req.body;
+    if (!userID || !clubID || !semester || !date || !block || !venueName) return res.status(400).json({ error: '缺少参数' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (user.role !== 'admin' && user.role !== 'super_admin') return res.status(403).json({ error: '仅管理员可排期' });
+    const schedule = await ClubVenueSchedule.create({ clubID, semester, date, block, venueName });
+    res.json({ ...schedule.toObject(), id: schedule._id.toString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/clubs/venue-schedule/:sid', async (req, res) => {
+  try {
+    const { sid } = req.params;
+    const { userID } = req.query;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+    if (user.role !== 'admin' && user.role !== 'super_admin') return res.status(403).json({ error: '仅管理员可删除' });
+    await ClubVenueSchedule.findByIdAndDelete(sid);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // 删除活动
