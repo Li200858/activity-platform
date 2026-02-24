@@ -108,6 +108,14 @@ const FeedbackSchema = new mongoose.Schema({
   adminReply: { type: String }
 }, { timestamps: true });
 
+// 每学期轮换次数记录（非核心成员一学期 5 次轮换限制）
+const SemesterRotationSchema = new mongoose.Schema({
+  userID: { type: String, required: true },
+  semester: { type: String, required: true }, // 如 "2025-spring" / "2025-fall"
+  count: { type: Number, default: 0 }
+}, { timestamps: true });
+SemesterRotationSchema.index({ userID: 1, semester: 1 }, { unique: true });
+
 // 创建模型
 const User = mongoose.model('User', UserSchema);
 const Club = mongoose.model('Club', ClubSchema);
@@ -116,6 +124,7 @@ const ClubMember = mongoose.model('ClubMember', ClubMemberSchema);
 const ActivityRegistration = mongoose.model('ActivityRegistration', ActivityRegistrationSchema);
 const Notification = mongoose.model('Notification', NotificationSchema);
 const Feedback = mongoose.model('Feedback', FeedbackSchema);
+const SemesterRotation = mongoose.model('SemesterRotation', SemesterRotationSchema);
 
 // 为了兼容Sequelize的API，创建一些包装方法
 const sequelize = {
@@ -145,5 +154,6 @@ module.exports = {
   ClubMember,
   ActivityRegistration,
   Feedback,
-  Notification
+  Notification,
+  SemesterRotation
 };

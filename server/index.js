@@ -9,7 +9,7 @@ const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 const XLSX = require('xlsx');
 const { 
-  mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification 
+  mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification, SemesterRotation 
 } = require('./db');
 
 const app = express();
@@ -413,6 +413,41 @@ app.post('/api/clubs/register', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 当前学期：春季 3月1日-7月15日，秋季 9月1日-次年1月31日
+function getCurrentSemester() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1; // 1-12
+  if (m >= 9) return `${y}-fall`;      // 9月1日-12月31日 → 当年秋季
+  if (m === 1) return `${y - 1}-fall`; // 1月1日-1月31日 → 上年秋季
+  // 2月-8月 → 当年春季（含 3/1-7/15 春季 + 2月与 7/16-8/31 沿用春季计数）
+  return `${y}-spring`;
+}
+
+const ROTATION_LIMIT_PER_SEMESTER = 5;
+
+function getSemesterLabel(semester) {
+  if (!semester) return '本学期';
+  const [y, type] = String(semester).split('-');
+  return type === 'fall' ? `${y}年秋季` : `${y}年春季`;
+}
+
+app.get('/api/clubs/rotation-quota', async (req, res) => {
+  try {
+    const { userID } = req.query;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const semester = getCurrentSemester();
+    const record = await SemesterRotation.findOne({ userID, semester }).lean();
+    const used = record ? record.count : 0;
+    res.json({
+      semester,
+      semesterLabel: getSemesterLabel(semester),
+      used,
+      limit: ROTATION_LIMIT_PER_SEMESTER
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/clubs/rotate', async (req, res) => {
   try {
     if (!isRotationAllowed()) return res.status(403).json({ error: '不在轮换时间' });
@@ -420,16 +455,24 @@ app.post('/api/clubs/rotate', async (req, res) => {
     if (!member) return res.status(400).json({ error: '请先报名社团' });
     const newClub = await Club.findById(req.body.newClubID);
     if (!newClub) return res.status(404).json({ error: '新社团不存在' });
+
+    const semester = getCurrentSemester();
+    let record = await SemesterRotation.findOne({ userID: req.body.userID, semester });
+    if (!record) record = await SemesterRotation.create({ userID: req.body.userID, semester, count: 0 });
+    if (record.count >= ROTATION_LIMIT_PER_SEMESTER) {
+      return res.status(400).json({ error: `本学期轮换次数已用完（${ROTATION_LIMIT_PER_SEMESTER} 次），无法继续轮换` });
+    }
+
     member.clubID = newClub._id;
     member.status = 'pending'; // 轮换也需要新社团创建者审核
     await member.save();
-    
-    // 通知新社团的创建者
+
+    record.count += 1;
+    await record.save();
+
     const club = newClub;
-    if (club) {
-      io.emit('notification_update', { userID: club.founderID });
-    }
-    
+    if (club) io.emit('notification_update', { userID: club.founderID });
+
     res.json(member);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

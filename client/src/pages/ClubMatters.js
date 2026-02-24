@@ -17,11 +17,20 @@ function ClubMatters({ user }) {
   const [coreMemberSearchQuery, setCoreMemberSearchQuery] = useState('');
   const [coreMemberSearchResults, setCoreMemberSearchResults] = useState([]);
   const [coreMemberSearching, setCoreMemberSearching] = useState(false);
+  const [rotationQuota, setRotationQuota] = useState(null); // { semester, used, limit }
 
   useEffect(() => {
     fetchClubs();
     fetchMyClub();
   }, []);
+
+  useEffect(() => {
+    if (view === 'rotation' && user?.userID) {
+      api.get(`/clubs/rotation-quota?userID=${user.userID}`)
+        .then(res => setRotationQuota(res.data))
+        .catch(() => setRotationQuota(null));
+    }
+  }, [view, user?.userID]);
 
   const fetchClubs = async () => {
     const res = await api.get('/clubs/approved');
@@ -135,8 +144,9 @@ function ClubMatters({ user }) {
       await api.post('/clubs/rotate', { userID: user.userID, newClubID: clubID });
       alert('社团轮换成功');
       fetchMyClub();
-      fetchClubs(); // 刷新社团列表以更新人数显示
-      setView('menu');
+      fetchClubs();
+      const res = await api.get(`/clubs/rotation-quota?userID=${user.userID}`);
+      setRotationQuota(res.data);
     } catch (err) {
       alert(err.response?.data?.error || '轮换失败');
     }
@@ -399,21 +409,41 @@ function ClubMatters({ user }) {
               <div>
                 <h2 className="text-xl font-black text-gray-800">社团轮换</h2>
                 <p className="text-[10px] text-orange-500 font-bold mt-1 uppercase tracking-widest">开放时间：周日 17:00 - 周四 21:50</p>
+                {rotationQuota != null && (
+                  <p className={`text-sm font-bold mt-2 ${rotationQuota.used >= rotationQuota.limit ? 'text-red-600' : 'text-gray-600'}`}>
+                    {rotationQuota.semesterLabel || '本学期'}已轮换 {rotationQuota.used} / {rotationQuota.limit} 次
+                    {rotationQuota.used >= rotationQuota.limit && '（已用完）'}
+                  </p>
+                )}
               </div>
               <button onClick={() => setView('menu')} className="text-xs font-bold text-gray-400 hover:text-blue-600">返回菜单</button>
             </div>
+            {rotationQuota != null && rotationQuota.used >= rotationQuota.limit && (
+              <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
+                本学期轮换次数已用完，无法继续轮换，请等待下一学期。
+              </div>
+            )}
             <div className="grid gap-4">
-              {clubs.filter(c => c.id !== myClub?.clubID).map(club => (
-                <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-blue-200 transition-colors">
-                  <button onClick={() => setSelectedClubDetail(club)} className="text-left group flex-1">
-                    <h3 className="font-black text-gray-800 text-lg group-hover:text-blue-600">{club.name}</h3>
-                    <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold mt-1 inline-block">
-                      当前人数: {club.memberCount} / {club.capacity}
-                    </span>
-                  </button>
-                  <button onClick={() => handleRotate(club.id)} className="bg-blue-600 text-white px-6 py-2 rounded-xl font-black shadow-lg shadow-blue-100 hover:scale-105 active:scale-95 transition-all">更换为此社团</button>
-                </div>
-              ))}
+              {clubs.filter(c => c.id !== myClub?.Club?.id && c.id !== myClub?.clubID).map(club => {
+                const quotaUsed = rotationQuota ? rotationQuota.used >= rotationQuota.limit : false;
+                return (
+                  <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-blue-200 transition-colors">
+                    <button onClick={() => setSelectedClubDetail(club)} className="text-left group flex-1">
+                      <h3 className="font-black text-gray-800 text-lg group-hover:text-blue-600">{club.name}</h3>
+                      <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold mt-1 inline-block">
+                        当前人数: {club.memberCount} / {club.capacity}
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => handleRotate(club.id)}
+                      disabled={quotaUsed}
+                      className={quotaUsed ? 'bg-gray-400 text-white px-6 py-2 rounded-xl font-black cursor-not-allowed' : 'bg-blue-600 text-white px-6 py-2 rounded-xl font-black shadow-lg shadow-blue-100 hover:scale-105 active:scale-95 transition-all'}
+                    >
+                      {quotaUsed ? '次数已用完' : '更换为此社团'}
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
