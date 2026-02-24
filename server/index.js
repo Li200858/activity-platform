@@ -209,7 +209,28 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: '该社团名称与已有用户名重复，请使用其他名称' });
     }
     
-    const club = await Club.create({ ...req.body, file: req.file ? req.file.filename : null, status: 'pending' });
+    // 解析社团类型与时间板块
+    let type = (req.body.type === 'academic' || req.body.type === 'activity') ? req.body.type : 'activity';
+    let blocks = req.body.blocks;
+    if (typeof blocks === 'string') {
+      try { blocks = JSON.parse(blocks); } catch (e) { blocks = []; }
+    }
+    if (!Array.isArray(blocks)) blocks = [];
+    blocks = blocks.filter(b => ['block1', 'block2', 'block3', 'block4'].includes(b));
+    if (blocks.length < 1 || blocks.length > 3) {
+      return res.status(400).json({ error: '请选择 1～3 个活动板块' });
+    }
+    if (type === 'activity' && blocks.includes('block1')) {
+      return res.status(400).json({ error: '活动社团不能选择 Block1（学术固定时段）' });
+    }
+    
+    const club = await Club.create({
+      ...req.body,
+      type,
+      blocks,
+      file: req.file ? req.file.filename : null,
+      status: 'pending'
+    });
     io.emit('notification_update', { type: 'new_audit' });
     const clubObj = club.toObject();
     clubObj.id = club._id.toString();
@@ -253,7 +274,9 @@ app.get('/api/clubs/approved', async (req, res) => {
         capacity: plain.capacity || null,
         file: plain.file || null,
         founderID: plain.founderID || '',
-        status: plain.status || 'pending'
+        status: plain.status || 'pending',
+        type: plain.type || 'activity',
+        blocks: Array.isArray(plain.blocks) ? plain.blocks : []
       };
     }));
     res.json(result);
@@ -702,7 +725,7 @@ app.get('/api/audit/status/:userID', async (req, res) => {
       Activity.find({ organizerID: userID }).select('_id').lean(), // 只需要ID
       Club.find({ founderID: userID }).select('_id').lean(), // 只需要ID
       // 管理员数据：只查询必要字段
-      isAdmin ? Club.find({ status: 'pending' }).select('name status founderID createdAt').lean() : Promise.resolve([]),
+      isAdmin ? Club.find({ status: 'pending' }).select('name status founderID createdAt type blocks intro content location time duration weeks capacity file').lean() : Promise.resolve([]),
       isAdmin ? Activity.find({ status: 'pending' }).select('name status organizerID createdAt').lean() : Promise.resolve([]),
       isAdmin ? ActivityRegistration.find({ status: 'pending' }).select('name class userID status activityID createdAt').lean() : Promise.resolve([])
     ]);

@@ -8,7 +8,8 @@ function ClubMatters({ user }) {
   const [selectedClubDetail, setSelectedClubDetail] = useState(null);
   const [members, setMembers] = useState(null); // { clubName, members: [] }
   const [formData, setFormData] = useState({
-    name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: ''
+    name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '',
+    type: 'activity', blocks: [] // 社团类型: academic | activity；活动板块: block1~block4 最多3个
   });
   const [file, setFile] = useState(null);
   const [nameStatus, setNameStatus] = useState(null); // null, 'checking', 'available', 'taken'
@@ -86,17 +87,26 @@ function ClubMatters({ user }) {
       return;
     }
     
+    if (!formData.blocks || formData.blocks.length < 1) {
+      alert('请至少选择 1 个活动板块');
+      return;
+    }
+    if (formData.blocks.length > 3) {
+      alert('最多选择 3 个活动板块');
+      return;
+    }
+
     try {
       const data = new FormData();
-      Object.keys(formData).forEach(key => data.append(key, formData[key]));
+      Object.keys(formData).filter(k => k !== 'blocks').forEach(key => data.append(key, formData[key]));
+      data.append('blocks', JSON.stringify(formData.blocks));
       data.append('founderID', user.userID);
       if (file) data.append('file', file);
-
       await api.post('/clubs', data);
       alert('社团申请已提交，请等待管理员审核');
       setView('menu');
       // 重置表单
-      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '' });
+      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', type: 'activity', blocks: [] });
       setFile(null);
       setNameStatus(null);
       setNameError('');
@@ -216,12 +226,18 @@ function ClubMatters({ user }) {
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex-1">
                           <h4 className="font-black text-gray-800 text-lg mb-2">{club.name}</h4>
-                          <div className="flex items-center gap-3 text-sm text-gray-600 mb-2">
+                          <div className="flex items-center gap-3 text-sm text-gray-600 mb-2 flex-wrap">
                             <span>创建者: {club.founderName || '未知'}</span>
                             {club.founderClass && <span>({club.founderClass})</span>}
                             <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold">
                               {club.memberCount} / {club.capacity} 人
                             </span>
+                            {(club.type || club.blocks?.length) ? (
+                              <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold">
+                                {club.type === 'academic' ? '学术' : '活动'}
+                                {club.blocks?.length ? ` · ${club.blocks.map(b => b.replace('block', 'B')).join('、')}` : ''}
+                              </span>
+                            ) : null}
                           </div>
                           {club.intro && (
                             <p className="text-xs text-gray-500 line-clamp-2 mt-2">{club.intro}</p>
@@ -396,6 +412,47 @@ function ClubMatters({ user }) {
               
               <div className="space-y-4">
                 <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团类型与时间板块</label>
+                  <div className="flex gap-4 mb-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="clubType" checked={formData.type === 'academic'} onChange={() => setFormData({ ...formData, type: 'academic' })} className="rounded-full border-gray-300" />
+                      <span className="text-sm font-medium">学术社团</span>
+                      <span className="text-[10px] text-gray-400">(可选 Block1)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="clubType" checked={formData.type === 'activity'} onChange={() => setFormData({ ...formData, type: 'activity', blocks: formData.blocks.filter(b => b !== 'block1') })} className="rounded-full border-gray-300" />
+                      <span className="text-sm font-medium">活动社团</span>
+                      <span className="text-[10px] text-gray-400">(不可选 Block1)</span>
+                    </label>
+                  </div>
+                  <p className="text-[10px] text-gray-500 mb-1">活动板块（选 1～3 个）：Block1=学术固定50min，Block2/3/4=各40min</p>
+                  <div className="flex flex-wrap gap-2">
+                    {['block1', 'block2', 'block3', 'block4'].map(block => {
+                      const disabled = formData.type === 'activity' && block === 'block1';
+                      const checked = formData.blocks.includes(block);
+                      const canAdd = checked || formData.blocks.length < 3;
+                      return (
+                        <label key={block} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${disabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : canAdd ? 'cursor-pointer border-purple-200 hover:bg-purple-50 ' + (checked ? 'bg-purple-100 text-purple-700 border-purple-400' : 'bg-gray-50 text-gray-600') : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200'}`}>
+                          <input
+                            type="checkbox"
+                            disabled={disabled || !canAdd}
+                            checked={checked}
+                            onChange={() => {
+                              if (disabled) return;
+                              const next = checked ? formData.blocks.filter(b => b !== block) : [...formData.blocks, block].slice(-3);
+                              setFormData({ ...formData, blocks: next });
+                            }}
+                            className="rounded border-gray-300"
+                          />
+                          {block === 'block1' ? 'Block1(学术50min)' : `${block}(40min)`}
+                        </label>
+                      );
+                    })}
+                  </div>
+                  {formData.blocks.length < 1 && <p className="text-xs text-red-500 mt-1">请至少选择 1 个板块</p>}
+                </div>
+
+                <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">活动安排详情</label>
                   <div className="grid grid-cols-2 gap-2">
                     <input placeholder="地点" className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all" required onChange={e => setFormData({...formData, location: e.target.value})} />
@@ -436,8 +493,26 @@ function ClubMatters({ user }) {
                 const labels = {
                   name: '社团名称', intro: '社团介绍', content: '活动内容', location: '活动地点',
                   time: '活动时间', duration: '活动时长', weeks: '持续周数', capacity: '人数限制',
-                  file: '附件'
+                  file: '附件', type: '社团类型', blocks: '活动板块'
                 };
+
+                if (key === 'type') {
+                  return (
+                    <div key={key} className="border-l-4 border-blue-100 pl-4 py-1">
+                      <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">{labels[key]}</label>
+                      <p className="text-gray-700 mt-1.5 font-medium">{value === 'academic' ? '学术社团' : value === 'activity' ? '活动社团' : value || '（未填写）'}</p>
+                    </div>
+                  );
+                }
+                if (key === 'blocks' && Array.isArray(value) && value.length > 0) {
+                  return (
+                    <div key={key} className="border-l-4 border-blue-100 pl-4 py-1">
+                      <label className="text-[10px] font-bold text-blue-400 uppercase tracking-widest">{labels[key]}</label>
+                      <p className="text-gray-700 mt-1.5 font-medium">{value.map(b => b.replace('block', 'Block')).join('、')}</p>
+                    </div>
+                  );
+                }
+                if (key === 'blocks') return null;
 
                 if (key === 'file' && value) {
                   return (

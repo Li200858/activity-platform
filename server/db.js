@@ -37,7 +37,10 @@ const ClubSchema = new mongoose.Schema({
   capacity: { type: Number },
   file: { type: String },
   founderID: { type: String },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  // 改革方案：社团类型与时间板块
+  type: { type: String, enum: ['academic', 'activity'], default: 'activity' }, // academic=学术社团, activity=活动社团
+  blocks: { type: [String], default: [] } // 可选: block1(学术50min), block2/block3/block4(各40min)，最多选3个
 }, { timestamps: true });
 
 // 活动模型
