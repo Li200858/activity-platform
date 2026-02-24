@@ -210,7 +210,7 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: '该社团名称与已有用户名重复，请使用其他名称' });
     }
     
-    // 解析社团类型与时间板块
+    const category = (req.body.category === 'daily' || req.body.category === 'wednesday') ? req.body.category : 'wednesday';
     let type = (req.body.type === 'academic' || req.body.type === 'activity') ? req.body.type : 'activity';
     let blocks = req.body.blocks;
     if (typeof blocks === 'string') {
@@ -218,19 +218,21 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
     }
     if (!Array.isArray(blocks)) blocks = [];
     blocks = blocks.filter(b => ['block1', 'block2', 'block3', 'block4'].includes(b));
-    if (blocks.length < 1 || blocks.length > 3) {
-      return res.status(400).json({ error: '请选择 1～3 个活动板块' });
-    }
-    if (type === 'activity' && blocks.includes('block1')) {
-      return res.status(400).json({ error: '活动社团不能选择 Block1（学术固定时段）' });
+    if (category === 'wednesday') {
+      if (blocks.length < 1 || blocks.length > 3) return res.status(400).json({ error: '周三社团请选择 1～3 个活动板块' });
+      if (type === 'activity' && blocks.includes('block1')) return res.status(400).json({ error: '活动社团不能选择 Block1（学术固定时段）' });
+    } else {
+      type = 'activity';
+      blocks = [];
     }
     
     const founderID = req.body.founderID || '';
     const club = await Club.create({
       ...req.body,
+      category,
       type,
       blocks,
-      coreMemberIDs: founderID ? [founderID] : [], // 创建者自动为核心人员
+      coreMemberIDs: founderID ? [founderID] : [],
       file: req.file ? req.file.filename : null,
       status: 'pending'
     });
@@ -286,6 +288,7 @@ app.get('/api/clubs/approved', async (req, res) => {
         status: plain.status || 'pending',
         type: plain.type || 'activity',
         blocks: Array.isArray(plain.blocks) ? plain.blocks : [],
+        category: plain.category || 'wednesday',
         coreMemberIDs: Array.isArray(plain.coreMemberIDs) ? plain.coreMemberIDs : [],
         coreMembers: plain.coreMembers || []
       };
@@ -296,24 +299,28 @@ app.get('/api/clubs/approved', async (req, res) => {
 
 app.get('/api/clubs/my/:userID', async (req, res) => {
   try {
-    const member = await ClubMember.findOne({ userID: req.params.userID }).populate('clubID');
-    if (member) {
-      const result = member.toObject();
+    const members = await ClubMember.find({ userID: req.params.userID, status: { $ne: 'rejected' } }).populate('clubID');
+    const wednesday = members.find(m => m.clubID && (m.clubID.category || 'wednesday') === 'wednesday');
+    const daily = members.filter(m => m.clubID && m.clubID.category === 'daily');
+    const format = (m) => {
+      const result = m.toObject();
       result.Club = result.clubID;
-      result.id = member._id.toString();
-      if (result.Club) {
-        result.Club.id = result.Club._id.toString();
-      }
-      res.json(result);
-    } else {
-      res.json(null);
-    }
+      result.id = m._id.toString();
+      if (result.Club) result.Club.id = result.Club._id.toString();
+      return result;
+    };
+    res.json({
+      wednesday: wednesday ? format(wednesday) : null,
+      daily: daily.map(format)
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/clubs/leave', async (req, res) => {
   try {
-    await ClubMember.deleteMany({ userID: req.body.userID });
+    const { userID, clubID } = req.body;
+    if (!userID || !clubID) return res.status(400).json({ error: '缺少 userID 或 clubID' });
+    await ClubMember.deleteOne({ userID, clubID });
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -382,21 +389,24 @@ app.put('/api/clubs/:id/core-members', async (req, res) => {
 app.post('/api/clubs/register', async (req, res) => {
   try {
     const { userID, clubID } = req.body;
-    const existing = await ClubMember.findOne({ 
-      userID, 
-      status: { $ne: 'rejected' } 
-    });
-    if (existing) return res.status(400).json({ error: '您已有正在审核中或已加入的社团' });
-    
-    // 检查人数是否已满
     const club = await Club.findById(clubID);
     if (!club) return res.status(404).json({ error: '社团不存在' });
     
+    const isWednesday = (club.category || 'wednesday') === 'wednesday';
+    if (isWednesday) {
+      const anyWednesday = await ClubMember.findOne({ userID, status: { $ne: 'rejected' } }).populate('clubID');
+      if (anyWednesday && anyWednesday.clubID && (anyWednesday.clubID.category || 'wednesday') === 'wednesday') {
+        if (anyWednesday.clubID._id.toString() === clubID) return res.status(400).json({ error: '您已报名该社团' });
+        return res.status(400).json({ error: '您已有周三社团，仅可加入一个；如需更换请使用轮换' });
+      }
+    } else {
+      const alreadyIn = await ClubMember.findOne({ userID, clubID: club._id, status: { $ne: 'rejected' } });
+      if (alreadyIn) return res.status(400).json({ error: '您已报名该日常社团' });
+    }
+    
     if (club.capacity) {
       const currentMemberCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
-      if (currentMemberCount >= club.capacity) {
-        return res.status(400).json({ error: '该社团人数已满，无法报名' });
-      }
+      if (currentMemberCount >= club.capacity) return res.status(400).json({ error: '该社团人数已满，无法报名' });
     }
     
     const member = await ClubMember.create({ userID, clubID: club._id, status: 'pending' });
@@ -452,10 +462,12 @@ app.get('/api/clubs/rotation-quota', async (req, res) => {
 app.post('/api/clubs/rotate', async (req, res) => {
   try {
     if (!isRotationAllowed()) return res.status(403).json({ error: '不在轮换时间' });
-    const member = await ClubMember.findOne({ userID: req.body.userID });
-    if (!member) return res.status(400).json({ error: '请先报名社团' });
+    const members = await ClubMember.find({ userID: req.body.userID }).populate('clubID');
+    const member = members.find(m => m.clubID && (m.clubID.category || 'wednesday') === 'wednesday');
+    if (!member) return res.status(400).json({ error: '请先报名周三社团' });
     const newClub = await Club.findById(req.body.newClubID);
     if (!newClub) return res.status(404).json({ error: '新社团不存在' });
+    if ((newClub.category || 'wednesday') !== 'wednesday') return res.status(400).json({ error: '只能轮换到周三社团' });
 
     const semester = getCurrentSemester();
     let record = await SemesterRotation.findOne({ userID: req.body.userID, semester });

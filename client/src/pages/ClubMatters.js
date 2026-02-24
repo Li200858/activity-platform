@@ -4,7 +4,8 @@ import { api } from '../utils/api';
 function ClubMatters({ user }) {
   const [view, setView] = useState('menu'); // menu, rotation, registration, creation, members, attendance, venue
   const [clubs, setClubs] = useState([]);
-  const [myClub, setMyClub] = useState(null);
+  const [myClub, setMyClub] = useState(null); // 周三社团（仅一个）
+  const [myDailyClubs, setMyDailyClubs] = useState([]); // 日常社团（可多个）
   const [selectedClubDetail, setSelectedClubDetail] = useState(null);
   const [members, setMembers] = useState(null); // { clubName, members: [] }
   const [attendanceClub, setAttendanceClub] = useState(null);
@@ -19,7 +20,7 @@ function ClubMatters({ user }) {
   const [newAttendanceNote, setNewAttendanceNote] = useState('');
   const [formData, setFormData] = useState({
     name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '',
-    type: 'activity', blocks: [] // 社团类型: academic | activity；活动板块: block1~block4 最多3个
+    type: 'activity', blocks: [], category: 'wednesday' // category: daily | wednesday；周三才需 type/blocks
   });
   const [file, setFile] = useState(null);
   const [nameStatus, setNameStatus] = useState(null);
@@ -50,21 +51,25 @@ function ClubMatters({ user }) {
   const fetchMyClub = async () => {
     try {
       const res = await api.get(`/clubs/my/${user.userID}`);
-      setMyClub(res.data);
+      setMyClub(res.data?.wednesday ?? null);
+      setMyDailyClubs(res.data?.daily ?? []);
     } catch (e) {
       console.error("无法获取个人社团状态", e);
+      setMyClub(null);
+      setMyDailyClubs([]);
     }
   };
 
-  const handleLeaveClub = async () => {
-    if (!window.confirm('确定要退出当前社团吗？')) return;
+  const handleLeaveClub = async (clubID) => {
+    if (!clubID) return;
+    if (!window.confirm('确定要退出该社团吗？')) return;
     try {
-      await api.post('/clubs/leave', { userID: user.userID });
+      await api.post('/clubs/leave', { userID: user.userID, clubID });
       alert('已退出社团');
-      setMyClub(null);
+      fetchMyClub();
       fetchClubs();
     } catch (e) {
-      alert('退出失败');
+      alert(e.response?.data?.error || '退出失败');
     }
   };
 
@@ -109,26 +114,28 @@ function ClubMatters({ user }) {
       return;
     }
     
-    if (!formData.blocks || formData.blocks.length < 1) {
-      alert('请至少选择 1 个活动板块');
-      return;
-    }
-    if (formData.blocks.length > 3) {
-      alert('最多选择 3 个活动板块');
-      return;
+    if (formData.category === 'wednesday') {
+      if (!formData.blocks || formData.blocks.length < 1) {
+        alert('请至少选择 1 个活动板块');
+        return;
+      }
+      if (formData.blocks.length > 3) {
+        alert('最多选择 3 个活动板块');
+        return;
+      }
     }
 
     try {
       const data = new FormData();
       Object.keys(formData).filter(k => k !== 'blocks').forEach(key => data.append(key, formData[key]));
-      data.append('blocks', JSON.stringify(formData.blocks));
+      data.append('blocks', formData.category === 'wednesday' ? JSON.stringify(formData.blocks) : '[]');
       data.append('founderID', user.userID);
       if (file) data.append('file', file);
       await api.post('/clubs', data);
       alert('社团申请已提交，请等待管理员审核');
       setView('menu');
       // 重置表单
-      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', type: 'activity', blocks: [] });
+      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', type: 'activity', blocks: [], category: 'wednesday' });
       setFile(null);
       setNameStatus(null);
       setNameError('');
@@ -142,8 +149,8 @@ function ClubMatters({ user }) {
       await api.post('/clubs/register', { userID: user.userID, clubID });
       alert('报名成功');
       fetchMyClub();
-      fetchClubs(); // 刷新社团列表以更新人数显示
-      setView('menu');
+      fetchClubs();
+      // 留在报名页，方便继续报日常社团
     } catch (err) {
       alert(err.response?.data?.error || '报名失败');
     }
@@ -323,33 +330,46 @@ function ClubMatters({ user }) {
 
   return (
     <div className="space-y-6">
-      {/* 当前社团状态卡片 */}
+      {/* 当前社团状态卡片：周三社团（一个）+ 日常社团（多个） */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <div className="flex justify-between items-center">
-          <div>
-            <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-1">我的社团状态</h2>
-            {myClub ? (
-              <div className="flex items-center gap-3">
-                <span className="text-xl font-black text-gray-800">{myClub.Club?.name || '未知社团'}</span>
-                <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
-                  myClub.status === 'approved' ? 'bg-green-50 text-green-600' : 
-                  myClub.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
-                }`}>
-                  {myClub.status === 'approved' ? '已加入' : myClub.status === 'rejected' ? '被拒绝' : '审核中'}
-                </span>
-              </div>
-            ) : (
-              <p className="text-gray-400 text-sm italic">暂未加入任何社团</p>
+        <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">我的社团状态</h2>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <div>
+              <span className="text-xs font-bold text-gray-500 mr-2">周三社团</span>
+              {myClub ? (
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-black text-gray-800">{myClub.Club?.name || '未知社团'}</span>
+                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
+                    myClub.status === 'approved' ? 'bg-green-50 text-green-600' :
+                    myClub.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
+                  }`}>
+                    {myClub.status === 'approved' ? '已加入' : myClub.status === 'rejected' ? '被拒绝' : '审核中'}
+                  </span>
+                </div>
+              ) : (
+                <p className="text-gray-400 text-sm italic">暂未加入</p>
+              )}
+            </div>
+            {myClub?.Club?.id && (
+              <button onClick={() => handleLeaveClub(myClub.Club.id)} className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-black hover:bg-red-600 hover:text-white transition-all shadow-sm">退出</button>
             )}
           </div>
-          {myClub && (
-            <button 
-              onClick={handleLeaveClub}
-              className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-black hover:bg-red-600 hover:text-white transition-all shadow-sm"
-            >
-              退出社团
-            </button>
-          )}
+          <div>
+            <span className="text-xs font-bold text-gray-500 mr-2">日常社团</span>
+            {myDailyClubs.length === 0 ? (
+              <p className="text-gray-400 text-sm italic mt-1">暂未加入</p>
+            ) : (
+              <ul className="mt-2 space-y-2">
+                {myDailyClubs.map(m => (
+                  <li key={m.Club?.id || m.clubID} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-2">
+                    <span className="font-bold text-gray-800">{m.Club?.name || '未知'}</span>
+                    <button onClick={() => handleLeaveClub(m.Club?.id || m.clubID)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">退出</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </div>
       </div>
 
@@ -359,7 +379,7 @@ function ClubMatters({ user }) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
               <button 
                 onClick={() => {
-                  if (!myClub) return alert('请先报名一个社团才能进行轮换');
+                  if (!myClub) return alert('请先报名一个周三社团才能进行轮换');
                   setView('rotation');
                 }} 
                 className={`p-6 rounded-2xl flex flex-col items-center gap-3 transition-all hover:scale-105 active:scale-95 ${
@@ -367,18 +387,15 @@ function ClubMatters({ user }) {
                 }`}
               >
                 <span className="font-black">社团轮换</span>
+                <span className="text-xs opacity-80">仅周三社团</span>
               </button>
               
               <button 
-                onClick={() => {
-                  if (myClub) return alert('您已加入社团，如需更换请使用轮换功能或先退出当前社团');
-                  setView('registration');
-                }} 
-                className={`p-6 rounded-2xl flex flex-col items-center gap-3 transition-all hover:scale-105 active:scale-95 ${
-                  myClub ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-green-50 text-green-600 hover:bg-green-600 hover:text-white'
-                }`}
+                onClick={() => setView('registration')} 
+                className="p-6 rounded-2xl flex flex-col items-center gap-3 transition-all hover:scale-105 active:scale-95 bg-green-50 text-green-600 hover:bg-green-600 hover:text-white"
               >
                 <span className="font-black">社团报名</span>
+                <span className="text-xs opacity-80">日常 / 周三</span>
               </button>
 
               <button onClick={() => setView('creation')} className="bg-purple-50 text-purple-600 p-6 rounded-2xl flex flex-col items-center gap-3 hover:bg-purple-600 hover:text-white transition-all hover:scale-105 active:scale-95">
@@ -386,14 +403,19 @@ function ClubMatters({ user }) {
               </button>
             </div>
 
-            {/* 显示所有社团列表 */}
-            <div className="border-t pt-6">
-              <h3 className="text-lg font-black text-gray-800 mb-4">所有社团列表</h3>
-              {clubs.length === 0 ? (
-                <p className="text-center py-10 text-gray-400 italic">暂无社团</p>
-              ) : (
-                <div className="grid gap-4">
-                  {clubs.map(club => (
+            {/* 显示所有社团列表：日常 / 周三 */}
+            <div className="border-t pt-6 space-y-6">
+              {['daily', 'wednesday'].map(cat => {
+                const list = clubs.filter(c => (c.category || 'wednesday') === cat);
+                const title = cat === 'daily' ? '日常社团' : '周三社团';
+                return (
+                  <div key={cat}>
+                    <h3 className="text-lg font-black text-gray-800 mb-4">{title}</h3>
+                    {list.length === 0 ? (
+                      <p className="text-center py-6 text-gray-400 italic">暂无{title}</p>
+                    ) : (
+                      <div className="grid gap-4">
+                        {list.map(club => (
                     <div key={club.id} className="bg-gray-50 p-5 rounded-2xl border border-gray-100 hover:border-blue-200 transition-colors">
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex-1">
@@ -467,9 +489,12 @@ function ClubMatters({ user }) {
                         )}
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </>
         )}
@@ -477,12 +502,14 @@ function ClubMatters({ user }) {
         {view === 'registration' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-black text-gray-800">可选社团列表</h2>
+              <h2 className="text-xl font-black text-gray-800">社团报名</h2>
               <button onClick={() => setView('menu')} className="text-xs font-bold text-gray-400 hover:text-blue-600">返回菜单</button>
             </div>
-            <div className="grid gap-4">
-              {clubs.length === 0 && <p className="text-center py-10 text-gray-400 italic">暂无可选社团</p>}
-              {clubs.map(club => (
+            {(() => {
+              const dailyClubs = clubs.filter(c => (c.category || 'wednesday') === 'daily');
+              const wednesdayClubs = clubs.filter(c => (c.category || 'wednesday') === 'wednesday');
+              const alreadyInWednesday = !!myClub;
+              const renderClubRow = (club, canJoin) => (
                 <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-green-200 transition-colors">
                   <button onClick={() => setSelectedClubDetail(club)} className="text-left group flex-1">
                     <h3 className="font-black text-gray-800 text-lg group-hover:text-blue-600 transition-colors">{club.name}</h3>
@@ -493,20 +520,36 @@ function ClubMatters({ user }) {
                       </span>
                     </div>
                   </button>
-                  <button 
-                    onClick={() => handleRegister(club.id)} 
-                    disabled={club.capacity && club.memberCount >= club.capacity}
+                  <button
+                    onClick={() => handleRegister(club.id)}
+                    disabled={!canJoin || (club.capacity && club.memberCount >= club.capacity)}
                     className={`px-6 py-2 rounded-xl font-black shadow-lg transition-all ${
-                      club.capacity && club.memberCount >= club.capacity
+                      !canJoin || (club.capacity && club.memberCount >= club.capacity)
                         ? 'bg-gray-400 text-white cursor-not-allowed'
                         : 'bg-green-600 text-white hover:scale-105 active:scale-95 shadow-green-100'
                     }`}
                   >
-                    {club.capacity && club.memberCount >= club.capacity ? '人数已满' : '立即报名'}
+                    {club.capacity && club.memberCount >= club.capacity ? '人数已满' : !canJoin ? '已加入周三社团' : '立即报名'}
                   </button>
                 </div>
-              ))}
-            </div>
+              );
+              return (
+                <div className="space-y-8">
+                  <div>
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-wider mb-2">日常社团（周三除外，可报多个）</h3>
+                    {dailyClubs.length === 0 ? <p className="text-center py-6 text-gray-400 italic">暂无日常社团</p> : (
+                      <div className="grid gap-4">{dailyClubs.map(c => renderClubRow(c, true))}</div>
+                    )}
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-wider mb-2">周三社团（限报一个，可轮换）</h3>
+                    {wednesdayClubs.length === 0 ? <p className="text-center py-6 text-gray-400 italic">暂无周三社团</p> : (
+                      <div className="grid gap-4">{wednesdayClubs.map(c => renderClubRow(c, !alreadyInWednesday))}</div>
+                    )}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
 
@@ -531,7 +574,7 @@ function ClubMatters({ user }) {
               </div>
             )}
             <div className="grid gap-4">
-              {clubs.filter(c => c.id !== myClub?.Club?.id && c.id !== myClub?.clubID).map(club => {
+              {clubs.filter(c => (c.category || 'wednesday') === 'wednesday' && c.id !== myClub?.Club?.id && c.id !== myClub?.clubID).map(club => {
                 const quotaUsed = rotationQuota ? rotationQuota.used >= rotationQuota.limit : false;
                 return (
                   <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-blue-200 transition-colors">
@@ -563,6 +606,21 @@ function ClubMatters({ user }) {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-4">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团分类</label>
+                  <div className="flex gap-4 mb-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="category" checked={formData.category === 'daily'} onChange={() => setFormData({ ...formData, category: 'daily' })} className="rounded-full border-gray-300" />
+                      <span className="text-sm font-medium">日常社团</span>
+                      <span className="text-[10px] text-gray-400">（周三除外，可报多个）</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="radio" name="category" checked={formData.category === 'wednesday'} onChange={() => setFormData({ ...formData, category: 'wednesday' })} className="rounded-full border-gray-300" />
+                      <span className="text-sm font-medium">周三社团</span>
+                      <span className="text-[10px] text-gray-400">（两时段四板块，限报一个）</span>
+                    </label>
+                  </div>
+                </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团基本信息</label>
                   <div>
@@ -603,8 +661,9 @@ function ClubMatters({ user }) {
               </div>
               
               <div className="space-y-4">
+                {formData.category === 'wednesday' && (
                 <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团类型与时间板块</label>
+                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团类型与时间板块（仅周三社团）</label>
                   <div className="flex gap-4 mb-2">
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="radio" name="clubType" checked={formData.type === 'academic'} onChange={() => setFormData({ ...formData, type: 'academic' })} className="rounded-full border-gray-300" />
@@ -643,6 +702,7 @@ function ClubMatters({ user }) {
                   </div>
                   {formData.blocks.length < 1 && <p className="text-xs text-red-500 mt-1">请至少选择 1 个板块</p>}
                 </div>
+                )}
 
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">活动安排详情</label>
