@@ -12,8 +12,11 @@ function ClubMatters({ user }) {
     type: 'activity', blocks: [] // 社团类型: academic | activity；活动板块: block1~block4 最多3个
   });
   const [file, setFile] = useState(null);
-  const [nameStatus, setNameStatus] = useState(null); // null, 'checking', 'available', 'taken'
+  const [nameStatus, setNameStatus] = useState(null);
   const [nameError, setNameError] = useState('');
+  const [coreMemberSearchQuery, setCoreMemberSearchQuery] = useState('');
+  const [coreMemberSearchResults, setCoreMemberSearchResults] = useState([]);
+  const [coreMemberSearching, setCoreMemberSearching] = useState(false);
 
   useEffect(() => {
     fetchClubs();
@@ -146,6 +149,58 @@ function ClubMatters({ user }) {
       setView('members');
     } catch (err) {
       alert(err.response?.data?.error || '获取成员列表失败');
+    }
+  };
+
+  const searchUsersForCore = async () => {
+    if (!coreMemberSearchQuery.trim() || !selectedClubDetail?.id) return;
+    setCoreMemberSearching(true);
+    try {
+      const res = await api.get(`/clubs/${selectedClubDetail.id}/search-users?q=${encodeURIComponent(coreMemberSearchQuery.trim())}&operatorID=${user.userID}`);
+      setCoreMemberSearchResults(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      setCoreMemberSearchResults([]);
+    } finally {
+      setCoreMemberSearching(false);
+    }
+  };
+
+  const addCoreMember = async (targetUserID) => {
+    if (!selectedClubDetail?.id) return;
+    try {
+      await api.put(`/clubs/${selectedClubDetail.id}/core-members`, {
+        userID: user.userID,
+        targetUserID,
+        action: 'add'
+      });
+      const updated = clubs.find(c => c.id === selectedClubDetail.id);
+      if (updated) {
+        const res = await api.get('/clubs/approved');
+        const next = res.data.find(c => c.id === selectedClubDetail.id);
+        setSelectedClubDetail(next || selectedClubDetail);
+        setClubs(res.data);
+      }
+      setCoreMemberSearchQuery('');
+      setCoreMemberSearchResults([]);
+    } catch (err) {
+      alert(err.response?.data?.error || '添加失败');
+    }
+  };
+
+  const removeCoreMember = async (targetUserID) => {
+    if (!selectedClubDetail?.id || selectedClubDetail.founderID === targetUserID) return;
+    try {
+      await api.put(`/clubs/${selectedClubDetail.id}/core-members`, {
+        userID: user.userID,
+        targetUserID,
+        action: 'remove'
+      });
+      const res = await api.get('/clubs/approved');
+      const next = res.data.find(c => c.id === selectedClubDetail.id);
+      setSelectedClubDetail(next || selectedClubDetail);
+      setClubs(res.data);
+    } catch (err) {
+      alert(err.response?.data?.error || '移除失败');
     }
   };
 
@@ -487,8 +542,55 @@ function ClubMatters({ user }) {
             </div>
             
             <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
+              {/* 核心人员区块 */}
+              <div className="border-l-4 border-amber-100 pl-4 py-2">
+                <label className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">核心人员</label>
+                <div className="mt-2 space-y-1.5">
+                  {(selectedClubDetail.coreMembers || []).length === 0 ? (
+                    <p className="text-gray-500 text-sm">暂无</p>
+                  ) : (
+                    (selectedClubDetail.coreMembers || []).map((m) => (
+                      <div key={m.userID} className="flex justify-between items-center text-sm">
+                        <span className="font-medium text-gray-700">{m.name}</span>
+                        <span className="text-gray-400 text-xs font-mono">ID: {m.userID}</span>
+                        {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && selectedClubDetail.founderID !== m.userID && (
+                          <button type="button" onClick={() => removeCoreMember(m.userID)} className="text-red-500 text-xs font-bold hover:underline">移除</button>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
+                {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                  <div className="mt-3 pt-3 border-t border-amber-100">
+                    <input
+                      placeholder="搜索姓名或ID添加核心人员"
+                      value={coreMemberSearchQuery}
+                      onChange={e => setCoreMemberSearchQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && searchUsersForCore()}
+                      className="w-full bg-gray-50 border rounded-lg px-3 py-2 text-sm mb-2"
+                    />
+                    <button type="button" onClick={searchUsersForCore} disabled={coreMemberSearching} className="text-amber-600 text-xs font-bold hover:underline mr-2">
+                      {coreMemberSearching ? '搜索中...' : '搜索'}
+                    </button>
+                    {coreMemberSearchResults.length > 0 && (
+                      <ul className="mt-2 space-y-1 max-h-32 overflow-y-auto">
+                        {coreMemberSearchResults
+                          .filter(u => !(selectedClubDetail.coreMembers || []).some(m => m.userID === u.userID))
+                          .slice(0, 10)
+                          .map(u => (
+                            <li key={u.userID} className="flex justify-between items-center text-sm py-1">
+                              <span>{u.name}</span>
+                              <button type="button" onClick={() => addCoreMember(u.userID)} className="text-amber-600 text-xs font-bold">添加</button>
+                            </li>
+                          ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+
               {Object.entries(selectedClubDetail).map(([key, value]) => {
-                if (['id', 'founderID', 'status', 'memberCount', 'createdAt', 'updatedAt'].includes(key)) return null;
+                if (['id', 'founderID', 'status', 'memberCount', 'createdAt', 'updatedAt', 'coreMembers', 'coreMemberIDs'].includes(key)) return null;
                 
                 const labels = {
                   name: '社团名称', intro: '社团介绍', content: '活动内容', location: '活动地点',

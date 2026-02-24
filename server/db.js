@@ -40,7 +40,9 @@ const ClubSchema = new mongoose.Schema({
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   // 改革方案：社团类型与时间板块
   type: { type: String, enum: ['academic', 'activity'], default: 'activity' }, // academic=学术社团, activity=活动社团
-  blocks: { type: [String], default: [] } // 可选: block1(学术50min), block2/block3/block4(各40min)，最多选3个
+  blocks: { type: [String], default: [] }, // 可选: block1(学术50min), block2/block3/block4(各40min)，最多选3个
+  // 核心人员（负责组织、点名等）；创建时自动包含 founderID
+  coreMemberIDs: { type: [String], default: [] }
 }, { timestamps: true });
 
 // 活动模型

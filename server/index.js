@@ -224,10 +224,12 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: '活动社团不能选择 Block1（学术固定时段）' });
     }
     
+    const founderID = req.body.founderID || '';
     const club = await Club.create({
       ...req.body,
       type,
       blocks,
+      coreMemberIDs: founderID ? [founderID] : [], // 创建者自动为核心人员
       file: req.file ? req.file.filename : null,
       status: 'pending'
     });
@@ -241,18 +243,21 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
 app.get('/api/clubs/approved', async (req, res) => {
   try {
     const clubs = await Club.find({ status: 'approved' });
-    // 计算每个社团的当前人数并添加创建者信息
+    // 批量获取所有核心人员 userID 对应的用户信息
+    const allCoreIDs = [...new Set(clubs.flatMap(c => (c.coreMemberIDs || []).concat(c.founderID ? [c.founderID] : [])))];
+    const coreUsers = allCoreIDs.length ? await User.find({ userID: { $in: allCoreIDs } }).select('userID name').lean() : [];
+    const userMap = new Map(coreUsers.map(u => [u.userID, u]));
+    
     const result = await Promise.all(clubs.map(async (club) => {
       const plain = club.toObject();
       const memberCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
       plain.memberCount = memberCount;
       plain.id = club._id.toString();
       
-      // 获取创建者信息
       let founderName = null;
       let founderClass = null;
       if (plain.founderID) {
-        const founder = await User.findOne({ userID: plain.founderID });
+        const founder = userMap.get(plain.founderID) || await User.findOne({ userID: plain.founderID }).select('name class').lean();
         if (founder) {
           founderName = founder.name;
           founderClass = founder.class;
@@ -261,7 +266,10 @@ app.get('/api/clubs/approved', async (req, res) => {
       plain.founderName = founderName;
       plain.founderClass = founderClass;
       
-      // 确保所有字段都存在
+      // 核心人员列表（含姓名）
+      const ids = [...new Set((plain.coreMemberIDs || []).concat(plain.founderID ? [plain.founderID] : []))];
+      plain.coreMembers = ids.map(uid => ({ userID: uid, name: userMap.get(uid)?.name || '未知' }));
+      
       return {
         ...plain,
         name: plain.name || '',
@@ -276,7 +284,9 @@ app.get('/api/clubs/approved', async (req, res) => {
         founderID: plain.founderID || '',
         status: plain.status || 'pending',
         type: plain.type || 'activity',
-        blocks: Array.isArray(plain.blocks) ? plain.blocks : []
+        blocks: Array.isArray(plain.blocks) ? plain.blocks : [],
+        coreMemberIDs: Array.isArray(plain.coreMemberIDs) ? plain.coreMemberIDs : [],
+        coreMembers: plain.coreMembers || []
       };
     }));
     res.json(result);
@@ -304,6 +314,67 @@ app.post('/api/clubs/leave', async (req, res) => {
   try {
     await ClubMember.deleteMany({ userID: req.body.userID });
     res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 社团内搜索用户（用于添加核心人员，仅创建者或管理员可调，返回 userID）
+app.get('/api/clubs/:id/search-users', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { q, operatorID } = req.query;
+    if (!q || !operatorID) return res.json([]);
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+    const isFounder = club.founderID === operatorID;
+    const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
+    if (!isFounder && !isAdmin) return res.status(403).json({ error: '无权限' });
+    const users = await User.find({
+      $or: [
+        { name: { $regex: q.trim(), $options: 'i' } },
+        { userID: { $regex: q.trim(), $options: 'i' } }
+      ]
+    })
+      .select('name class userID')
+      .lean()
+      .limit(20);
+    res.json(users.map(u => ({ name: u.name, class: u.class, userID: u.userID })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 添加/移除社团核心人员（仅创建者或管理员）
+app.put('/api/clubs/:id/core-members', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID: operatorID, targetUserID, action } = req.body;
+    if (!operatorID || !targetUserID || !action || !['add', 'remove'].includes(action)) {
+      return res.status(400).json({ error: '参数错误' });
+    }
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+    const isFounder = club.founderID === operatorID;
+    const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
+    if (!isFounder && !isAdmin) return res.status(403).json({ error: '仅社团创建者或管理员可管理核心人员' });
+    
+    const list = Array.isArray(club.coreMemberIDs) ? [...club.coreMemberIDs] : [];
+    if (club.founderID && !list.includes(club.founderID)) list.unshift(club.founderID);
+    
+    if (action === 'add') {
+      if (list.includes(targetUserID)) return res.status(400).json({ error: '已是核心人员' });
+      list.push(targetUserID);
+    } else {
+      if (club.founderID === targetUserID) return res.status(400).json({ error: '不能移除创建者' });
+      club.coreMemberIDs = list.filter(uid => uid !== targetUserID);
+      await club.save();
+      return res.json({ success: true, coreMemberIDs: club.coreMemberIDs });
+    }
+    
+    club.coreMemberIDs = list;
+    await club.save();
+    res.json({ success: true, coreMemberIDs: club.coreMemberIDs });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
