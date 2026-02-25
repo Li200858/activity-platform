@@ -101,16 +101,23 @@ function ClubMatters({ user }) {
     }
   };
 
+  const wednesdayTimeFromBlocks = (blocks) => {
+    const order = ['block1', 'block2', 'block3', 'block4'];
+    const range = { block1: '13:40-14:30', block2: '14:30-15:10', block3: '15:10-15:50', block4: '15:50-16:30' };
+    if (!blocks || blocks.length === 0) return '周三下午（从日历选择）';
+    const sorted = [...blocks].sort((a, b) => order.indexOf(a) - order.indexOf(b));
+    const first = range[sorted[0]], last = range[sorted[sorted.length - 1]];
+    const start = first?.split('-')[0] || ''; const end = last?.split('-')[1] || '';
+    return start && end ? `周三下午 ${start}–${end}` : '周三下午（从日历选择）';
+  };
+
   const handleCreateClub = async (e) => {
     e.preventDefault();
     
-    // 如果名称已被占用，阻止提交
     if (nameStatus === 'taken') {
       alert(nameError || '该社团名称不可用，请使用其他名称');
       return;
     }
-    
-    // 如果正在检查，等待检查完成
     if (nameStatus === 'checking') {
       alert('正在检查社团名称，请稍候...');
       return;
@@ -130,7 +137,9 @@ function ClubMatters({ user }) {
 
     try {
       const data = new FormData();
-      Object.keys(formData).filter(k => k !== 'blocks').forEach(key => data.append(key, formData[key]));
+      const payload = { ...formData };
+      if (needsBlocks && formData.blocks?.length > 0) payload.time = wednesdayTimeFromBlocks(formData.blocks);
+      Object.keys(payload).filter(k => k !== 'blocks').forEach(key => data.append(key, payload[key]));
       data.append('blocks', needsBlocks ? JSON.stringify(formData.blocks) : '[]');
       data.append('founderID', user.userID);
       if (file) data.append('file', file);
@@ -650,19 +659,20 @@ function ClubMatters({ user }) {
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="radio" name="category" checked={formData.category === 'daily'} onChange={() => setFormData({ ...formData, category: 'daily' })} className="rounded-full border-gray-300" />
                       <span className="text-sm font-medium">日常社团</span>
-                      <span className="text-[10px] text-gray-400">（周三除外，可报多个）</span>
+                      <span className="text-[10px] text-gray-400">（非周三，可报多个）</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="radio" name="category" checked={formData.category === 'wednesday'} onChange={() => setFormData({ ...formData, category: 'wednesday' })} className="rounded-full border-gray-300" />
                       <span className="text-sm font-medium">周三社团</span>
-                      <span className="text-[10px] text-gray-400">（两时段四板块，限报一个）</span>
+                      <span className="text-[10px] text-gray-400">（从下方日历选时段）</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
                       <input type="radio" name="category" checked={formData.category === 'both'} onChange={() => setFormData({ ...formData, category: 'both' })} className="rounded-full border-gray-300" />
                       <span className="text-sm font-medium">周三+日常</span>
-                      <span className="text-[10px] text-gray-400">（同时出现在两个时段）</span>
+                      <span className="text-[10px] text-gray-400">（周三日历 + 日常）</span>
                     </label>
                   </div>
+                  <p className="text-[10px] text-gray-500 mt-1">选「周三」或「周三+日常」时，右侧会出现周三下午时间日历，直接点选时段即可；选「日常」无固定 block。</p>
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团基本信息</label>
@@ -705,45 +715,87 @@ function ClubMatters({ user }) {
               
               <div className="space-y-4">
                 {(formData.category === 'wednesday' || formData.category === 'both') && (
-                <div className="flex flex-col gap-1">
-                  <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">社团类型与时间板块（周三时段）</label>
-                  <div className="flex gap-4 mb-2">
+                <div className="flex flex-col gap-2 p-4 rounded-2xl border-2 border-blue-100 bg-blue-50/30">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">周三下午 · 从日历选择时段</span>
+                  </div>
+                  <div className="flex gap-4 mb-3">
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="clubType" checked={formData.type === 'academic'} onChange={() => setFormData({ ...formData, type: 'academic' })} className="rounded-full border-gray-300" />
-                      <span className="text-sm font-medium">学术社团</span>
-                      <span className="text-[10px] text-gray-400">(可选 Block1)</span>
+                      <input
+                        type="radio"
+                        name="clubType"
+                        checked={formData.type === 'academic'}
+                        onChange={() => setFormData({ ...formData, type: 'academic' })}
+                        className="rounded-full border-gray-300"
+                      />
+                      <span className="text-sm font-medium">学术</span>
+                      <span className="text-[10px] text-gray-500">（可选 Block1～4，选 1～3 个）</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer">
-                      <input type="radio" name="clubType" checked={formData.type === 'activity'} onChange={() => setFormData({ ...formData, type: 'activity', blocks: formData.blocks.filter(b => b !== 'block1') })} className="rounded-full border-gray-300" />
-                      <span className="text-sm font-medium">活动社团</span>
-                      <span className="text-[10px] text-gray-400">(不可选 Block1)</span>
+                      <input
+                        type="radio"
+                        name="clubType"
+                        checked={formData.type === 'activity'}
+                        onChange={() => setFormData({ ...formData, type: 'activity', blocks: formData.blocks.filter(b => b !== 'block1') })}
+                        className="rounded-full border-gray-300"
+                      />
+                      <span className="text-sm font-medium">活动</span>
+                      <span className="text-[10px] text-gray-500">（不可选 Block1，选 1～3 个）</span>
                     </label>
                   </div>
-                  <p className="text-[10px] text-gray-500 mb-1">活动板块（选 1～3 个）：Block1=学术固定50min，Block2/3/4=各40min</p>
-                  <div className="flex flex-wrap gap-2">
-                    {['block1', 'block2', 'block3', 'block4'].map(block => {
-                      const disabled = formData.type === 'activity' && block === 'block1';
-                      const checked = formData.blocks.includes(block);
-                      const canAdd = checked || formData.blocks.length < 3;
-                      return (
-                        <label key={block} className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-sm font-medium transition-all ${disabled ? 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200' : canAdd ? 'cursor-pointer border-purple-200 hover:bg-purple-50 ' + (checked ? 'bg-purple-100 text-purple-700 border-purple-400' : 'bg-gray-50 text-gray-600') : 'bg-gray-100 text-gray-400 cursor-not-allowed border-gray-200'}`}>
-                          <input
-                            type="checkbox"
-                            disabled={disabled || !canAdd}
-                            checked={checked}
-                            onChange={() => {
-                              if (disabled) return;
-                              const next = checked ? formData.blocks.filter(b => b !== block) : [...formData.blocks, block].slice(-3);
-                              setFormData({ ...formData, blocks: next });
-                            }}
-                            className="rounded border-gray-300"
-                          />
-                          {block === 'block1' ? 'Block1(学术50min)' : `${block}(40min)`}
-                        </label>
-                      );
-                    })}
+                  <div className="border border-gray-200 rounded-xl overflow-hidden bg-white shadow-sm">
+                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-200 text-xs font-bold text-gray-600">周三下午时间</div>
+                    <div className="flex">
+                      <div className="flex flex-col text-[10px] font-mono text-gray-500 border-r border-gray-100 bg-gray-50/50 shrink-0">
+                        <div className="h-11 flex items-end pb-1 pr-2">13:40</div>
+                        <div className="h-11 flex items-end pb-1 pr-2">14:30</div>
+                        <div className="h-11 flex items-end pb-1 pr-2">15:10</div>
+                        <div className="h-11 flex items-end pb-1 pr-2">15:50</div>
+                        <div className="h-3 flex items-end pb-1 pr-2">16:30</div>
+                      </div>
+                      <div className="flex-1 flex flex-col min-w-0">
+                        {[
+                          { id: 'block1', start: '13:40', end: '14:30', label: 'Block1', sub: '学术 50min' },
+                          { id: 'block2', start: '14:30', end: '15:10', label: 'Block2', sub: '40min' },
+                          { id: 'block3', start: '15:10', end: '15:50', label: 'Block3', sub: '40min' },
+                          { id: 'block4', start: '15:50', end: '16:30', label: 'Block4', sub: '40min' }
+                        ].map(({ id, start, end, label, sub }) => {
+                          const isActivity = formData.type === 'activity';
+                          const block1Disabled = isActivity && id === 'block1';
+                          const checked = formData.blocks.includes(id);
+                          const canAdd = checked || formData.blocks.length < 3;
+                          const disabled = block1Disabled || !canAdd;
+                          return (
+                            <label
+                              key={id}
+                              className={`flex items-center justify-between px-3 py-2.5 border-b border-gray-100 last:border-b-0 transition-all ${disabled ? 'bg-gray-100 cursor-not-allowed opacity-60' : 'cursor-pointer hover:bg-purple-50 ' + (checked ? 'bg-purple-100 border-l-4 border-l-purple-500' : '')}`}
+                            >
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-mono text-xs font-bold text-gray-700 tabular-nums shrink-0">{start} – {end}</span>
+                                <span className="font-medium text-gray-800 truncate">{label}</span>
+                                <span className="text-[10px] text-gray-500 shrink-0">{sub}</span>
+                              </div>
+                              <input
+                                type="checkbox"
+                                disabled={disabled}
+                                checked={checked}
+                                onChange={() => {
+                                  if (disabled) return;
+                                  const next = checked ? formData.blocks.filter(b => b !== id) : [...formData.blocks, id].slice(-3);
+                                  setFormData({ ...formData, blocks: next });
+                                }}
+                                className="rounded border-gray-300 text-purple-600 focus:ring-purple-500 shrink-0"
+                              />
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="px-3 py-1.5 bg-amber-50/80 border-t border-gray-100 text-[10px] text-gray-600">
+                      日常不设 block；仅周三下午在此选择。
+                    </div>
                   </div>
-                  {formData.blocks.length < 1 && <p className="text-xs text-red-500 mt-1">请至少选择 1 个板块</p>}
+                  {formData.blocks.length < 1 && <p className="text-xs text-red-500">请至少选择 1 个时段</p>}
                 </div>
                 )}
 
@@ -751,7 +803,16 @@ function ClubMatters({ user }) {
                   <label className="text-[10px] font-bold text-gray-400 uppercase ml-1">活动安排详情</label>
                   <div className="grid grid-cols-2 gap-2">
                     <input placeholder="地点" className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all" required onChange={e => setFormData({...formData, location: e.target.value})} />
-                    <input placeholder="具体时间" className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all" required onChange={e => setFormData({...formData, time: e.target.value})} />
+                    {(formData.category === 'wednesday' || formData.category === 'both') ? (
+                      <div className="bg-gray-100 rounded-xl px-4 py-3 text-sm text-gray-600 border border-gray-200">
+                        周三时间由上方日历所选 block 确定
+                        {formData.blocks.length > 0 && (
+                          <span className="block mt-1 font-mono text-xs text-gray-700">{wednesdayTimeFromBlocks(formData.blocks)}</span>
+                        )}
+                      </div>
+                    ) : (
+                      <input placeholder="具体时间（如周一/五下午）" className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all" required onChange={e => setFormData({...formData, time: e.target.value})} />
+                    )}
                   </div>
                   <div className="grid grid-cols-3 gap-2">
                     <input placeholder="单次时长" className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all text-xs" required onChange={e => setFormData({...formData, duration: e.target.value})} />
