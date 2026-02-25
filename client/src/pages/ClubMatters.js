@@ -20,7 +20,7 @@ function ClubMatters({ user }) {
   const [newAttendanceNote, setNewAttendanceNote] = useState('');
   const [formData, setFormData] = useState({
     name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '',
-    type: 'activity', blocks: [], category: 'wednesday' // category: daily | wednesday；周三才需 type/blocks
+    type: 'activity', blocks: [], category: 'wednesday', dailyTime: '' // dailyTime 仅周三+日常使用
   });
   const [file, setFile] = useState(null);
   const [nameStatus, setNameStatus] = useState(null);
@@ -138,7 +138,10 @@ function ClubMatters({ user }) {
     try {
       const data = new FormData();
       const payload = { ...formData };
-      if (needsBlocks && formData.blocks?.length > 0) payload.time = wednesdayTimeFromBlocks(formData.blocks);
+      if (needsBlocks && formData.blocks?.length > 0) {
+        payload.time = wednesdayTimeFromBlocks(formData.blocks);
+        if (formData.category === 'both' && formData.dailyTime?.trim()) payload.time += '；日常：' + formData.dailyTime.trim();
+      }
       Object.keys(payload).filter(k => k !== 'blocks').forEach(key => data.append(key, payload[key]));
       data.append('blocks', needsBlocks ? JSON.stringify(formData.blocks) : '[]');
       data.append('founderID', user.userID);
@@ -147,7 +150,7 @@ function ClubMatters({ user }) {
       alert('社团申请已提交，请等待管理员审核');
       setView('menu');
       // 重置表单
-      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', type: 'activity', blocks: [], category: 'wednesday' });
+      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', type: 'activity', blocks: [], category: 'wednesday', dailyTime: '' });
       setFile(null);
       setNameStatus(null);
       setNameError('');
@@ -814,6 +817,17 @@ function ClubMatters({ user }) {
                       <input placeholder="具体时间（如周一/五下午）" className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all" required onChange={e => setFormData({...formData, time: e.target.value})} />
                     )}
                   </div>
+                  {formData.category === 'both' && (
+                    <div className="mt-2">
+                      <label className="text-[10px] font-bold text-amber-600 uppercase ml-1 block mb-1">日常时间（除周三外的其他天）</label>
+                      <input
+                        placeholder="如：周一、五下午 4:00；或任意描述"
+                        value={formData.dailyTime}
+                        onChange={e => setFormData({ ...formData, dailyTime: e.target.value })}
+                        className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-sm outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+                      />
+                    </div>
+                  )}
                   <div className="grid grid-cols-3 gap-2">
                     <input placeholder="单次时长" className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all text-xs" required onChange={e => setFormData({...formData, duration: e.target.value})} />
                     <input placeholder="持续周数" type="number" className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all text-xs" required onChange={e => setFormData({...formData, weeks: e.target.value})} />
