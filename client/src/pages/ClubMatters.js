@@ -101,9 +101,10 @@ function ClubMatters({ user }) {
     }
   };
 
+  const BLOCK_TIME_LABELS = { block1: '13:40-14:30', block2: '14:30-15:10', block3: '15:10-15:50', block4: '15:50-16:30' };
   const wednesdayTimeFromBlocks = (blocks) => {
     const order = ['block1', 'block2', 'block3', 'block4'];
-    const range = { block1: '13:40-14:30', block2: '14:30-15:10', block3: '15:10-15:50', block4: '15:50-16:30' };
+    const range = BLOCK_TIME_LABELS;
     if (!blocks || blocks.length === 0) return '周三下午（从日历选择）';
     const sorted = [...blocks].sort((a, b) => order.indexOf(a) - order.indexOf(b));
     const first = range[sorted[0]], last = range[sorted[sorted.length - 1]];
@@ -999,10 +1000,16 @@ function ClubMatters({ user }) {
                             {selectedClubDetail.type === 'academic' ? '学术社团' : '活动社团'}
                           </p>
                           {selectedClubDetail.blocks && selectedClubDetail.blocks.length > 0 && (
-                            <p className="text-gray-700">
-                              <span className="font-medium">板块：</span>
-                              {selectedClubDetail.blocks.map(b => b.replace('block', 'Block')).join('、')}
-                            </p>
+                            <div className="text-gray-700">
+                              <span className="font-medium">板块与时间：</span>
+                              <ul className="mt-1 space-y-0.5 text-sm">
+                                {selectedClubDetail.blocks.map(b => (
+                                  <li key={b} className="font-mono text-gray-800">
+                                    {b.replace('block', 'Block')} 周三下午 {BLOCK_TIME_LABELS[b] || '—'}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
                           )}
                         </>
                       )}
