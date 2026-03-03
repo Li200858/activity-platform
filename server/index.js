@@ -141,10 +141,11 @@ app.put('/api/user/english-name', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 统一搜索
+// 统一搜索：用户姓名/ID、社团名、活动名，以及「该用户创建的社团/活动」
 app.get('/api/search', async (req, res) => {
   try {
     const { q, operatorID } = req.query;
+    if (!q || !String(q).trim()) return res.json({ users: [], clubs: [], activities: [] });
     const operator = await User.findOne({ userID: operatorID });
     const isAdmin = operator && (operator.role === 'admin' || operator.role === 'super_admin');
     const users = await User.find({ 
@@ -152,23 +153,34 @@ app.get('/api/search', async (req, res) => {
         { name: { $regex: q, $options: 'i' } }, 
         { userID: { $regex: q, $options: 'i' } }
       ] 
-    });
-    const formattedUsers = users.map(u => {
-      const uObj = u.toObject ? u.toObject() : u;
-      return { 
-        name: uObj.name, 
-        class: uObj.class, 
-        role: uObj.role, 
-        userID: isAdmin ? uObj.userID : null,
-        id: uObj._id ? uObj._id.toString() : null
-      };
-    });
-    const clubs = await Club.find({ name: { $regex: q, $options: 'i' }, status: 'approved' });
-    const activities = await Activity.find({ name: { $regex: q, $options: 'i' }, status: 'approved' });
+    }).select('name englishName class role userID').lean();
+    const matchedUserIDs = users.map(u => u.userID);
+    const formattedUsers = users.map(u => ({
+      name: u.name,
+      englishName: u.englishName || '',
+      class: u.class,
+      role: u.role,
+      userID: isAdmin ? u.userID : null,
+      id: u._id ? u._id.toString() : null
+    }));
+    // 社团：按社团名 或 创建者属于匹配用户
+    const clubsByName = await Club.find({ name: { $regex: q, $options: 'i' }, status: 'approved' }).lean();
+    const clubsByFounder = matchedUserIDs.length ? await Club.find({ founderID: { $in: matchedUserIDs }, status: 'approved' }).lean() : [];
+    const clubIds = new Set(clubsByName.map(c => c._id.toString()));
+    clubsByFounder.forEach(c => { clubIds.add(c._id.toString()); });
+    const clubs = await Club.find({ _id: { $in: Array.from(clubIds) }, status: 'approved' }).lean();
+    const clubsWithId = clubs.map(c => ({ ...c, id: c._id.toString() }));
+    // 活动：按活动名 或 组织者属于匹配用户
+    const actsByName = await Activity.find({ name: { $regex: q, $options: 'i' }, status: 'approved' }).lean();
+    const actsByOrganizer = matchedUserIDs.length ? await Activity.find({ organizerID: { $in: matchedUserIDs }, status: 'approved' }).lean() : [];
+    const actIds = new Set(actsByName.map(a => a._id.toString()));
+    actsByOrganizer.forEach(a => { actIds.add(a._id.toString()); });
+    const activities = await Activity.find({ _id: { $in: Array.from(actIds) }, status: 'approved' }).lean();
+    const activitiesWithId = activities.map(a => ({ ...a, id: a._id.toString() }));
     res.json({ 
       users: formattedUsers, 
-      clubs: clubs.map(c => ({ ...c.toObject(), id: c._id.toString() })), 
-      activities: activities.map(a => ({ ...a.toObject(), id: a._id.toString() }))
+      clubs: clubsWithId, 
+      activities: activitiesWithId
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -704,14 +716,16 @@ app.get('/api/activities/approved', async (req, res) => {
         plain.currentPhase = newPhase;
       }
       
-      // 获取组织者信息
+      // 获取组织者信息（含英文名）
       let organizerName = null;
       let organizerClass = null;
+      let organizerEnglishName = null;
       if (plain.organizerID) {
-        const organizer = await User.findOne({ userID: plain.organizerID });
+        const organizer = await User.findOne({ userID: plain.organizerID }).select('name englishName class').lean();
         if (organizer) {
           organizerName = organizer.name;
           organizerClass = organizer.class;
+          organizerEnglishName = organizer.englishName || null;
         }
       }
       
@@ -720,6 +734,7 @@ app.get('/api/activities/approved', async (req, res) => {
         currentRegCount: count,
         organizerName,
         organizerClass,
+        organizerEnglishName,
         name: plain.name || '',
         capacity: plain.capacity || null,
         time: plain.time || '',
@@ -893,25 +908,31 @@ app.get('/api/activities/:id/participants', async (req, res) => {
     const registrations = await ActivityRegistration.find({
       activityID: activity._id,
       status: 'approved'
-    }).sort({ createdAt: 1 });
+    }).sort({ createdAt: 1 }).lean();
+    
+    const userIDs = [...new Set(registrations.map(r => r.userID).filter(Boolean))];
+    const users = userIDs.length ? await User.find({ userID: { $in: userIDs } }).select('userID name englishName class').lean() : [];
+    const userMap = Object.fromEntries(users.map(u => [u.userID, u]));
+    
+    const participants = registrations.map((reg, index) => {
+      const u = reg.userID ? userMap[reg.userID] : null;
+      return {
+        index: index + 1,
+        name: u ? u.name : (reg.name || ''),
+        class: u ? u.class : (reg.class || ''),
+        englishName: u ? (u.englishName || '') : '',
+        userID: reg.userID || '',
+        contact: reg.contact || '',
+        reason: reg.reason || '',
+        registeredAt: reg.createdAt,
+        paymentStatus: reg.paymentStatus || 'unpaid',
+        paymentProof: reg.paymentProof || null
+      };
+    });
     
     res.json({
       activityName: activity.name,
-      participants: registrations.map((reg, index) => {
-        const regObj = reg.toObject ? reg.toObject() : reg;
-        return {
-          index: index + 1,
-          name: regObj.name || '',
-          class: regObj.class || '',
-          userID: regObj.userID || '',
-          contact: regObj.contact || '',
-          reason: regObj.reason || '',
-          registeredAt: regObj.createdAt,
-          // 支付相关字段
-          paymentStatus: regObj.paymentStatus || 'unpaid',
-          paymentProof: regObj.paymentProof || null
-        };
-      })
+      participants
     });
   } catch (e) {
     console.error('获取参与者列表失败:', e);

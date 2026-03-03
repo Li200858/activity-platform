@@ -191,7 +191,7 @@ function ActivityMatters({ user }) {
                         <p className="text-sm text-gray-500">
                           {act.location}{act.time ? ' | ' + act.time : ''}
                           {act.organizerName && (
-                            <span className="ml-2">组织者: {act.organizerName}{act.organizerClass ? ` (${act.organizerClass})` : ''}</span>
+                            <span className="ml-2">组织者: {act.organizerName}{act.organizerEnglishName ? ` / ${act.organizerEnglishName}` : ''}{act.organizerClass ? ` (${act.organizerClass})` : ''}</span>
                           )}
                         </p>
                         {act.capacity && (
@@ -500,7 +500,7 @@ function ActivityMatters({ user }) {
                     <p className="text-sm text-gray-500">
                       {act.location}{act.time ? ' | ' + act.time : ''}
                       {act.organizerName && (
-                        <span className="ml-2">组织者: {act.organizerName}{act.organizerClass ? ` (${act.organizerClass})` : ''}</span>
+                        <span className="ml-2">组织者: {act.organizerName}{act.organizerEnglishName ? ` / ${act.organizerEnglishName}` : ''}{act.organizerClass ? ` (${act.organizerClass})` : ''}</span>
                       )}
                     </p>
                   </div>
@@ -705,7 +705,7 @@ function ActivityMatters({ user }) {
                 )}
                 {selectedActivity.organizerName && (
                   <p className="text-sm text-gray-600">
-                    <strong>组织者：</strong>{selectedActivity.organizerName}{selectedActivity.organizerClass ? ` (${selectedActivity.organizerClass})` : ''}
+                    <strong>组织者：</strong>{selectedActivity.organizerName}{selectedActivity.organizerEnglishName ? ` / ${selectedActivity.organizerEnglishName}` : ''}{selectedActivity.organizerClass ? ` (${selectedActivity.organizerClass})` : ''}
                   </p>
                 )}
                 {selectedActivity.capacity && (
