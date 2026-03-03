@@ -12,6 +12,8 @@ function AuditStatus({ user }) {
   const [venueSchedulesAll, setVenueSchedulesAll] = useState([]);
   const [venueScheduleForm, setVenueScheduleForm] = useState({ clubID: '', semester: '', date: '', block: '', venueName: '' });
   const [clubsForVenue, setClubsForVenue] = useState([]);
+  const [venueClubSearchQuery, setVenueClubSearchQuery] = useState('');
+  const [venueClubSearchFocused, setVenueClubSearchFocused] = useState(false);
 
   useEffect(() => {
     fetchAuditStatus();
@@ -112,6 +114,7 @@ function AuditStatus({ user }) {
     try {
       await api.post('/clubs/venue-schedule', { ...venueScheduleForm, userID: user.userID });
       setVenueScheduleForm({ clubID: '', semester: '', date: '', block: '', venueName: '' });
+      setVenueClubSearchQuery('');
       const res = await api.get('/clubs/venue-schedule');
       setVenueSchedulesAll(res.data || []);
     } catch (err) {
@@ -308,10 +311,40 @@ function AuditStatus({ user }) {
             <section>
               <h4 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-widest">添加排期</h4>
               <form onSubmit={handleAddVenueSchedule} className="flex flex-wrap gap-2 items-end">
-                <select value={venueScheduleForm.clubID} onChange={e => setVenueScheduleForm(f => ({ ...f, clubID: e.target.value }))} className="bg-gray-50 border rounded-lg px-3 py-2 text-sm" required>
-                  <option value="">选择社团</option>
-                  {clubsForVenue.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                </select>
+                <div className="relative min-w-[180px]">
+                  <input
+                    type="text"
+                    placeholder="搜索社团名称，点击选择"
+                    value={venueScheduleForm.clubID ? (clubsForVenue.find(c => c.id === venueScheduleForm.clubID)?.name ?? '') : venueClubSearchQuery}
+                    onChange={e => {
+                      setVenueClubSearchQuery(e.target.value);
+                      if (venueScheduleForm.clubID) setVenueScheduleForm(f => ({ ...f, clubID: '' }));
+                    }}
+                    onFocus={() => setVenueClubSearchFocused(true)}
+                    onBlur={() => setTimeout(() => setVenueClubSearchFocused(false), 200)}
+                    className="bg-gray-50 border rounded-lg px-3 py-2 text-sm w-full"
+                  />
+                  {venueScheduleForm.clubID && (
+                    <button type="button" onClick={() => { setVenueScheduleForm(f => ({ ...f, clubID: '' })); setVenueClubSearchQuery(''); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-red-500 text-xs">清除</button>
+                  )}
+                  {venueClubSearchFocused && (
+                    <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-auto">
+                      {(venueClubSearchQuery.trim() ? clubsForVenue.filter(c => c.name && c.name.toLowerCase().includes(venueClubSearchQuery.trim().toLowerCase())) : clubsForVenue).slice(0, 20).map(c => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => { setVenueScheduleForm(f => ({ ...f, clubID: c.id })); setVenueClubSearchQuery(''); }}
+                          className="w-full text-left px-3 py-2 hover:bg-teal-50 text-sm border-b border-gray-50 last:border-0"
+                        >
+                          {c.name}
+                        </button>
+                      ))}
+                      {venueClubSearchQuery.trim() && clubsForVenue.filter(c => c.name && c.name.toLowerCase().includes(venueClubSearchQuery.trim().toLowerCase())).length === 0 && (
+                        <div className="px-3 py-2 text-gray-500 text-sm">无匹配社团</div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 <select value={venueScheduleForm.semester} onChange={e => setVenueScheduleForm(f => ({ ...f, semester: e.target.value }))} className="bg-gray-50 border rounded-lg px-3 py-2 text-sm" required>
                   <option value="">学期</option>
                   <option value="2026-spring">2026春</option>

@@ -22,6 +22,8 @@ function ActivityMatters({ user }) {
     name: user.name, class: user.class, reason: '', contact: ''
   });
   const [paymentProof, setPaymentProof] = useState(null);
+  const [activitySearchQuery, setActivitySearchQuery] = useState('');
+  const [activitySearchFocused, setActivitySearchFocused] = useState(false);
 
   useEffect(() => {
     fetchActivities();
@@ -491,6 +493,48 @@ function ActivityMatters({ user }) {
       {view === 'register' && (
         <div>
           <h2 className="text-xl font-bold mb-4">正在进行的活动</h2>
+          {/* 搜索活动：输入后弹出列表，点击选择进入报名 */}
+          <div className="relative mb-6">
+            <input
+              type="text"
+              placeholder="搜索活动名称，选择后直接进入报名"
+              value={activitySearchQuery}
+              onChange={e => setActivitySearchQuery(e.target.value)}
+              onFocus={() => setActivitySearchFocused(true)}
+              onBlur={() => setTimeout(() => setActivitySearchFocused(false), 200)}
+              className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+            />
+            {activitySearchQuery.trim() && activitySearchFocused && (() => {
+              const q = activitySearchQuery.trim().toLowerCase();
+              const list = activities.filter(act => act.name && act.name.toLowerCase().includes(q));
+              if (list.length === 0) return <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-2 text-sm text-gray-500 text-center">无匹配活动</div>;
+              return (
+                <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto">
+                  {list.map(act => {
+                    const full = act.capacity && act.currentRegCount >= act.capacity;
+                    return (
+                      <button
+                        key={act.id}
+                        type="button"
+                        onClick={() => {
+                          if (full) return;
+                          setSelectedActivity(act);
+                          setView('regForm');
+                          setActivitySearchQuery('');
+                        }}
+                        disabled={full}
+                        className={`w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 transition-colors flex justify-between items-center ${full ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'hover:bg-blue-50'}`}
+                      >
+                        <span className="font-bold text-gray-800">{act.name}</span>
+                        <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{act.location}{act.time ? ` · ${act.time}` : ''}</span>
+                        {full && <span className="text-xs text-red-600 font-medium">人数已满</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
           <div className="grid gap-4">
             {activities.map(act => (
               <div key={act.id} className="border p-4 rounded flex flex-col gap-4">

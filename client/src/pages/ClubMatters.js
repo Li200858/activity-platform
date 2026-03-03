@@ -31,6 +31,8 @@ function ClubMatters({ user }) {
   const [rotationQuota, setRotationQuota] = useState(null); // { semester, used, limit }
   const [editingCategoryType, setEditingCategoryType] = useState(false);
   const [editCategoryTypeForm, setEditCategoryTypeForm] = useState({ category: '', type: 'activity', blocks: [], intro: '' });
+  const [clubSearchQuery, setClubSearchQuery] = useState(''); // 社团报名/轮换 搜索
+  const [clubSearchFocused, setClubSearchFocused] = useState(false);
 
   useEffect(() => {
     fetchClubs();
@@ -559,6 +561,40 @@ function ClubMatters({ user }) {
               <h2 className="text-xl font-black text-gray-800">社团报名</h2>
               <button onClick={() => setView('menu')} className="text-xs font-bold text-gray-400 hover:text-blue-600">返回菜单</button>
             </div>
+            {/* 搜索社团：输入后弹出列表，点击选择 */}
+            <div className="relative mb-6">
+              <input
+                type="text"
+                placeholder="搜索社团名称，选择后可直接查看或报名"
+                value={clubSearchQuery}
+                onChange={e => setClubSearchQuery(e.target.value)}
+                onFocus={() => setClubSearchFocused(true)}
+                onBlur={() => setTimeout(() => setClubSearchFocused(false), 200)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-green-500 focus:border-transparent text-sm"
+              />
+              {clubSearchQuery.trim() && clubSearchFocused && (() => {
+                const q = clubSearchQuery.trim().toLowerCase();
+                const dailyClubs = clubs.filter(c => (c.category === 'daily' || c.category === 'both') && c.name.toLowerCase().includes(q));
+                const wednesdayClubs = clubs.filter(c => (c.category === 'wednesday' || c.category === 'both') && c.name.toLowerCase().includes(q));
+                const list = [...dailyClubs, ...wednesdayClubs.filter(c => !dailyClubs.find(d => d.id === c.id))];
+                if (list.length === 0) return <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-2 text-sm text-gray-500 text-center">无匹配社团</div>;
+                return (
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto">
+                    {list.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => { setSelectedClubDetail(c); setClubSearchQuery(''); }}
+                        className="w-full text-left px-4 py-3 hover:bg-green-50 border-b border-gray-50 last:border-0 transition-colors"
+                      >
+                        <span className="font-bold text-gray-800">{c.name}</span>
+                        <span className="text-xs text-gray-500 ml-2">{c.memberCount} / {c.capacity} 人</span>
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
             {(() => {
               const dailyClubs = clubs.filter(c => c.category === 'daily' || c.category === 'both');
               const wednesdayClubs = clubs.filter(c => c.category === 'wednesday' || c.category === 'both');
@@ -627,6 +663,42 @@ function ClubMatters({ user }) {
                 本学期轮换次数已用完，无法继续轮换，请等待下一学期。
               </div>
             )}
+            {/* 搜索社团：输入后弹出可轮换的社团列表，点击选择 */}
+            <div className="relative mb-6">
+              <input
+                type="text"
+                placeholder="搜索社团名称，选择后可直接更换或查看"
+                value={clubSearchQuery}
+                onChange={e => setClubSearchQuery(e.target.value)}
+                onFocus={() => setClubSearchFocused(true)}
+                onBlur={() => setTimeout(() => setClubSearchFocused(false), 200)}
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+              />
+              {clubSearchQuery.trim() && clubSearchFocused && (() => {
+                const q = clubSearchQuery.trim().toLowerCase();
+                const rotationList = clubs.filter(c => (c.category === 'wednesday' || c.category === 'both') && c.id !== myClub?.Club?.id && c.id !== myClub?.clubID);
+                const list = rotationList.filter(c => c.name.toLowerCase().includes(q));
+                if (list.length === 0) return <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-2 text-sm text-gray-500 text-center">无匹配社团</div>;
+                return (
+                  <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto">
+                    {list.map(c => {
+                      const quotaUsed = rotationQuota ? rotationQuota.used >= rotationQuota.limit : false;
+                      return (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => { setSelectedClubDetail(c); setClubSearchQuery(''); }}
+                          className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b border-gray-50 last:border-0 transition-colors flex justify-between items-center"
+                        >
+                          <span className="font-bold text-gray-800">{c.name}</span>
+                          <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold">{c.memberCount} / {c.capacity}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
             <div className="grid gap-4">
               {clubs.filter(c => (c.category === 'wednesday' || c.category === 'both') && c.id !== myClub?.Club?.id && c.id !== myClub?.clubID).map(club => {
                 const quotaUsed = rotationQuota ? rotationQuota.used >= rotationQuota.limit : false;
