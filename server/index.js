@@ -264,7 +264,7 @@ app.get('/api/clubs/approved', async (req, res) => {
     const clubs = await Club.find({ status: 'approved' });
     // 批量获取所有核心人员 userID 对应的用户信息
     const allCoreIDs = [...new Set(clubs.flatMap(c => (c.coreMemberIDs || []).concat(c.founderID ? [c.founderID] : [])))];
-    const coreUsers = allCoreIDs.length ? await User.find({ userID: { $in: allCoreIDs } }).select('userID name').lean() : [];
+    const coreUsers = allCoreIDs.length ? await User.find({ userID: { $in: allCoreIDs } }).select('userID name englishName class').lean() : [];
     const userMap = new Map(coreUsers.map(u => [u.userID, u]));
     
     const result = await Promise.all(clubs.map(async (club) => {
@@ -274,20 +274,30 @@ app.get('/api/clubs/approved', async (req, res) => {
       plain.id = club._id.toString();
       
       let founderName = null;
+      let founderEnglishName = null;
       let founderClass = null;
       if (plain.founderID) {
-        const founder = userMap.get(plain.founderID) || await User.findOne({ userID: plain.founderID }).select('name class').lean();
+        const founder = userMap.get(plain.founderID) || await User.findOne({ userID: plain.founderID }).select('name englishName class').lean();
         if (founder) {
           founderName = founder.name;
+          founderEnglishName = founder.englishName || null;
           founderClass = founder.class;
         }
       }
       plain.founderName = founderName;
+      plain.founderEnglishName = founderEnglishName;
       plain.founderClass = founderClass;
       
       // 核心人员列表（含姓名）
       const ids = [...new Set((plain.coreMemberIDs || []).concat(plain.founderID ? [plain.founderID] : []))];
-      plain.coreMembers = ids.map(uid => ({ userID: uid, name: userMap.get(uid)?.name || '未知' }));
+      plain.coreMembers = ids.map(uid => {
+        const u = userMap.get(uid);
+        return {
+          userID: uid,
+          name: u?.name || '未知',
+          englishName: u?.englishName || ''
+        };
+      });
       
       return {
         ...plain,
@@ -1271,10 +1281,11 @@ app.get('/api/clubs/:id/members', async (req, res) => {
     
     // 手动查询每个成员的用户信息
     const membersWithUserInfo = await Promise.all(members.map(async (member) => {
-      const user = await User.findOne({ userID: member.userID });
+      const user = await User.findOne({ userID: member.userID }).select('name englishName class userID');
       return {
         index: 0, // 稍后设置
         name: user ? user.name : '',
+        englishName: user ? (user.englishName || '') : '',
         class: user ? user.class : '',
         userID: member.userID || '',
         joinedAt: member.createdAt
@@ -1349,11 +1360,12 @@ app.get('/api/clubs/:id/attendance-sessions/:sessionId', async (req, res) => {
     const presentUserIDs = (await ClubAttendanceRecord.find({ sessionID: session._id }).lean()).map(r => r.userID);
     const members = await ClubMember.find({ clubID: club._id, status: 'approved' });
     const memberUserIDs = members.map(m => m.userID);
-    const users = await User.find({ userID: { $in: memberUserIDs } }).select('name class userID').lean();
+    const users = await User.find({ userID: { $in: memberUserIDs } }).select('name englishName class userID').lean();
     const userMap = new Map(users.map(u => [u.userID, u]));
     const list = memberUserIDs.map(uid => ({
       userID: uid,
       name: userMap.get(uid)?.name || '',
+      englishName: userMap.get(uid)?.englishName || '',
       class: userMap.get(uid)?.class || '',
       present: presentUserIDs.includes(uid)
     }));

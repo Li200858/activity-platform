@@ -253,7 +253,10 @@ function AuditStatus({ user }) {
                 {searchResults.map(u => (
                   <div key={u.userID} className="flex justify-between items-center p-4 bg-gray-50 rounded-xl border border-gray-100">
                     <div>
-                      <span className="font-bold text-gray-800">{u.name}</span>
+                      <span className="font-bold text-gray-800">
+                        {u.name}
+                        {u.englishName && ` / ${u.englishName}`}
+                      </span>
                       <span className="text-gray-400 text-xs ml-2">({u.class} · ID: {u.userID})</span>
                       <span className={`ml-3 text-[10px] px-2 py-0.5 rounded-full font-bold uppercase ${
                         u.role === 'super_admin' ? 'bg-purple-100 text-purple-600' : 

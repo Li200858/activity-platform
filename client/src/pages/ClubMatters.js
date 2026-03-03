@@ -472,7 +472,10 @@ function ClubMatters({ user }) {
                         <div className="flex-1">
                           <h4 className="font-black text-gray-800 text-lg mb-2">{club.name}</h4>
                           <div className="flex items-center gap-3 text-sm text-gray-600 mb-2 flex-wrap">
-                            <span>创建者: {club.founderName || '未知'}</span>
+                            <span>
+                              创建者: {club.founderName || '未知'}
+                              {club.founderEnglishName && ` / ${club.founderEnglishName}`}
+                            </span>
                             {club.founderClass && <span>({club.founderClass})</span>}
                             <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold">
                               {club.memberCount} / {club.capacity} 人
@@ -880,7 +883,10 @@ function ClubMatters({ user }) {
                   {attendanceMembers.map(m => (
                     <label key={m.userID} className="flex items-center gap-3 p-2 bg-white rounded-lg border">
                       <input type="checkbox" checked={!!m.present} onChange={e => setAttendanceMembers(prev => prev.map(x => x.userID === m.userID ? { ...x, present: e.target.checked } : x))} />
-                      <span>{m.name}</span>
+                      <span>
+                        {m.name}
+                        {m.englishName && ` / ${m.englishName}`}
+                      </span>
                       <span className="text-gray-400 text-xs">{m.class} · {m.userID}</span>
                     </label>
                   ))}
@@ -1103,7 +1109,10 @@ function ClubMatters({ user }) {
                   ) : (
                     (selectedClubDetail.coreMembers || []).map((m) => (
                       <div key={m.userID} className="flex justify-between items-center text-sm">
-                        <span className="font-medium text-gray-700">{m.name}</span>
+                        <span className="font-medium text-gray-700">
+                          {m.name}
+                          {m.englishName && ` / ${m.englishName}`}
+                        </span>
                         <span className="text-gray-400 text-xs font-mono">ID: {m.userID}</span>
                         {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && selectedClubDetail.founderID !== m.userID && (
                           <button type="button" onClick={() => removeCoreMember(m.userID)} className="text-red-500 text-xs font-bold hover:underline">移除</button>
@@ -1309,7 +1318,10 @@ function ClubMatters({ user }) {
                   {members.members.map((m) => (
                     <tr key={m.userID} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm text-gray-600">{m.index}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{m.name}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800">
+                        {m.name}
+                        {m.englishName && ` / ${m.englishName}`}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{m.class}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 font-mono">{m.userID}</td>
                     </tr>

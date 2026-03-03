@@ -883,7 +883,10 @@ function ActivityMatters({ user }) {
                   {participants.participants.map((p) => (
                     <tr key={p.userID} className="hover:bg-gray-50">
                       <td className="px-4 py-3 text-sm text-gray-600">{p.index}</td>
-                      <td className="px-4 py-3 text-sm font-medium text-gray-800">{p.name}</td>
+                      <td className="px-4 py-3 text-sm font-medium text-gray-800">
+                        {p.name}
+                        {p.englishName && ` / ${p.englishName}`}
+                      </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{p.class}</td>
                       <td className="px-4 py-3 text-sm text-gray-600 font-mono">{p.userID}</td>
                       <td className="px-4 py-3 text-sm text-gray-600">{p.contact || '-'}</td>

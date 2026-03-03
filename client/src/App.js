@@ -175,7 +175,10 @@ function App() {
                 {searchResults.users.map((u, idx) => (
                   <div key={idx} className="bg-white p-5 rounded-2xl shadow-sm flex justify-between items-center border border-gray-100 hover:shadow-xl hover:scale-[1.02] transition-all">
                     <div>
-                      <p className="font-black text-gray-800 text-lg">{u.name}</p>
+                      <p className="font-black text-gray-800 text-lg">
+                        {u.name}
+                        {u.englishName && ` / ${u.englishName}`}
+                      </p>
                       <p className="text-xs text-gray-400 mt-0.5">{u.class}</p>
                       {u.userID && <p className="text-[10px] text-blue-500 font-mono mt-2 bg-blue-50 inline-block px-2 py-0.5 rounded-md">ID: {u.userID}</p>}
                     </div>
