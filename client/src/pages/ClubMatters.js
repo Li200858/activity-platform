@@ -1276,6 +1276,40 @@ function ClubMatters({ user }) {
 
             <div className="p-8 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
               <div className="flex gap-2 flex-wrap">
+                {/* 报名按钮 - 从社团报名页打开详情时显示 */}
+                {view === 'registration' && (() => {
+                  const isWednesday = selectedClubDetail.category === 'wednesday' || selectedClubDetail.category === 'both';
+                  const alreadyInWednesday = !!myClub;
+                  const canJoin = isWednesday ? !alreadyInWednesday : true;
+                  const full = selectedClubDetail.capacity && selectedClubDetail.memberCount >= selectedClubDetail.capacity;
+                  const disabled = !canJoin || full;
+                  return (
+                    <button
+                      onClick={() => { if (!disabled) handleRegister(selectedClubDetail.id); }}
+                      disabled={disabled}
+                      className={`px-6 py-3 rounded-2xl font-black transition-all ${
+                        disabled ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105 active:scale-95'
+                      }`}
+                    >
+                      {full ? '人数已满' : !canJoin ? '已加入周三社团' : '立即报名'}
+                    </button>
+                  );
+                })()}
+                {/* 更换为此社团 - 从社团轮换页打开详情时显示 */}
+                {view === 'rotation' && selectedClubDetail.id !== myClub?.Club?.id && selectedClubDetail.id !== myClub?.clubID && (selectedClubDetail.category === 'wednesday' || selectedClubDetail.category === 'both') && (() => {
+                  const quotaUsed = rotationQuota != null && rotationQuota.used >= rotationQuota.limit;
+                  return (
+                    <button
+                      onClick={() => { if (!quotaUsed) handleRotate(selectedClubDetail.id); }}
+                      disabled={quotaUsed}
+                      className={`px-6 py-3 rounded-2xl font-black transition-all ${
+                        quotaUsed ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 active:scale-95'
+                      }`}
+                    >
+                      {quotaUsed ? '轮换次数已用完' : '更换为此社团'}
+                    </button>
+                  );
+                })()}
                 {/* 参与人员按钮 - 仅创建者和管理员可见 */}
                 {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                   <button 
