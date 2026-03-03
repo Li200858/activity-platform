@@ -19,6 +19,7 @@ function App() {
   const [hasNotification, setHasNotification] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
+  const [englishDraft, setEnglishDraft] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -41,6 +42,11 @@ function App() {
     }
   }, [user]);
 
+  // 同步当前用户英文名到右上角输入框草稿
+  useEffect(() => {
+    setEnglishDraft(user?.englishName || '');
+  }, [user?.englishName]);
+
   const checkNotifications = async () => {
     if (!user) return;
     try {
@@ -55,6 +61,18 @@ function App() {
     if (tab === '审核状态' || tab === '反馈收集') {
       setHasNotification(false);
       axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/notifications/read`, { userID: user.userID });
+    }
+  };
+
+  const handleSaveEnglishName = async () => {
+    if (!user) return;
+    const val = englishDraft.trim();
+    if (val === (user.englishName || '')) return;
+    try {
+      await updateEnglishName(val);
+      alert('英文名已保存');
+    } catch (e) {
+      alert('保存英文名失败，请重试');
     }
   };
 
@@ -124,18 +142,21 @@ function App() {
                   </p>
                   <p className="text-[10px] text-gray-400 font-mono">ID: {user.userID}</p>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="flex items-center gap-2">
                   <input
                     type="text"
-                    defaultValue={user.englishName || ''}
+                    value={englishDraft}
                     placeholder="英文名"
-                    onBlur={e => {
-                      const val = e.target.value.trim();
-                      if (val === (user.englishName || '')) return;
-                      updateEnglishName(val).catch(() => alert('保存英文名失败，请重试'));
-                    }}
+                    onChange={e => setEnglishDraft(e.target.value)}
                     className="w-32 sm:w-40 bg-white border border-gray-200 rounded-full px-3 py-1 text-[10px] text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
                   />
+                  <button
+                    type="button"
+                    onClick={handleSaveEnglishName}
+                    className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold hover:bg-blue-600 hover:text-white transition-all"
+                  >
+                    保存
+                  </button>
                 </div>
               </div>
               <button onClick={logout} className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all">
