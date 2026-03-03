@@ -128,7 +128,7 @@ function App() {
                   <input
                     type="text"
                     defaultValue={user.englishName || ''}
-                    placeholder="英文名（给外教看）"
+                    placeholder="英文名"
                     onBlur={e => {
                       const val = e.target.value.trim();
                       if (val === (user.englishName || '')) return;
