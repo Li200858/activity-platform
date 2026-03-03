@@ -39,6 +39,15 @@ export const useAuth = () => {
     localStorage.removeItem('user');
   };
 
+  const updateEnglishName = async (englishName) => {
+    if (!user || !user.userID) return;
+    const res = await axios.put(`${API_BASE}/user/english-name`, { userID: user.userID, englishName });
+    const userData = res.data;
+    setUser(userData);
+    localStorage.setItem('user', JSON.stringify(userData));
+    return userData;
+  };
+
   const copyID = () => {
     if (user && user.userID) {
       navigator.clipboard.writeText(user.userID);
@@ -46,7 +55,7 @@ export const useAuth = () => {
     }
   };
 
-  return { user, login, register, logout, copyID };
+  return { user, login, register, logout, copyID, updateEnglishName };
 };
 
 // 创建axios实例，配置超时时间

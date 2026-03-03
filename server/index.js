@@ -126,6 +126,21 @@ app.post('/api/user/login', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 更新用户英文名（登录后在前端右上角填写）
+app.put('/api/user/english-name', async (req, res) => {
+  try {
+    const { userID, englishName } = req.body;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(404).json({ error: '用户不存在' });
+    user.englishName = (englishName || '').trim();
+    await user.save();
+    const userObj = user.toObject();
+    userObj.id = user._id.toString();
+    res.json(userObj);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 // 统一搜索
 app.get('/api/search', async (req, res) => {
   try {

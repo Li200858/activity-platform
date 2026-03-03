@@ -14,7 +14,7 @@ const SOCKET_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 const socket = io(SOCKET_URL);
 
 function App() {
-  const { user, login, register, logout, copyID } = useAuth();
+  const { user, login, register, logout, copyID, updateEnglishName } = useAuth();
   const [activeTab, setActiveTab] = useState('社团事宜');
   const [hasNotification, setHasNotification] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -116,9 +116,27 @@ function App() {
                 )}
               </button>
               <div className="h-8 w-px bg-gray-200"></div>
-              <div className="flex flex-col items-end">
-                <p className="text-xs font-black text-gray-800 leading-tight">{user.name}</p>
-                <p className="text-[10px] text-gray-400 font-mono">ID: {user.userID}</p>
+              <div className="flex flex-col items-end gap-1">
+                <div className="flex flex-col items-end">
+                  <p className="text-xs font-black text-gray-800 leading-tight">
+                    {user.name}
+                    {user.englishName && ` / ${user.englishName}`}
+                  </p>
+                  <p className="text-[10px] text-gray-400 font-mono">ID: {user.userID}</p>
+                </div>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="text"
+                    defaultValue={user.englishName || ''}
+                    placeholder="英文名（给外教看）"
+                    onBlur={e => {
+                      const val = e.target.value.trim();
+                      if (val === (user.englishName || '')) return;
+                      updateEnglishName(val).catch(() => alert('保存英文名失败，请重试'));
+                    }}
+                    className="w-32 sm:w-40 bg-white border border-gray-200 rounded-full px-3 py-1 text-[10px] text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
               </div>
               <button onClick={logout} className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
