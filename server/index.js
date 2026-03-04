@@ -582,6 +582,30 @@ app.get('/api/clubs/rotation-quota', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 重置社团轮换次数（仅 super_admin）
+app.post('/api/clubs/rotation-quota/reset', async (req, res) => {
+  try {
+    const { operatorID, targetUserID } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+    if (operator.role !== 'super_admin') return res.status(403).json({ error: '仅超级管理员可重置轮换次数' });
+    const userIDToReset = targetUserID || operatorID;
+    const semester = getCurrentSemester();
+    await SemesterRotation.findOneAndUpdate(
+      { userID: userIDToReset, semester },
+      { $set: { count: 0 } },
+      { upsert: true, new: true }
+    );
+    res.json({
+      success: true,
+      message: `已重置${userIDToReset === operatorID ? '本账号' : '该用户'}本学期轮换次数`,
+      semester,
+      semesterLabel: getSemesterLabel(semester)
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/clubs/rotate', async (req, res) => {
   try {
     if (!isRotationAllowed()) return res.status(403).json({ error: '不在轮换时间' });

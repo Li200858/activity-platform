@@ -683,7 +683,7 @@ function ClubMatters({ user }) {
 
         {view === 'rotation' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
-            <div className="flex justify-between items-center mb-6">
+            <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
               <div>
                 <h2 className="text-xl font-black text-gray-800">社团轮换</h2>
                 <p className="text-[10px] text-orange-500 font-bold mt-1 uppercase tracking-widest">开放时间：周日 17:00 - 周四 21:50</p>
@@ -694,7 +694,28 @@ function ClubMatters({ user }) {
                   </p>
                 )}
               </div>
-              <button onClick={() => setView('menu')} className="text-xs font-bold text-gray-400 hover:text-blue-600">返回菜单</button>
+              <div className="flex items-center gap-2">
+                {user.role === 'super_admin' && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (!window.confirm('确定重置本账号本学期轮换次数为 0？')) return;
+                      try {
+                        await api.post('/clubs/rotation-quota/reset', { operatorID: user.userID });
+                        alert('已重置');
+                        const res = await api.get(`/clubs/rotation-quota?userID=${user.userID}`);
+                        setRotationQuota(res.data);
+                      } catch (e) {
+                        alert(e.response?.data?.error || '重置失败');
+                      }
+                    }}
+                    className="text-xs font-bold text-amber-600 hover:text-amber-800 border border-amber-300 rounded-lg px-3 py-1.5"
+                  >
+                    重置本学期次数
+                  </button>
+                )}
+                <button onClick={() => setView('menu')} className="text-xs font-bold text-gray-400 hover:text-blue-600">返回菜单</button>
+              </div>
             </div>
             {rotationQuota != null && rotationQuota.used >= rotationQuota.limit && (
               <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
