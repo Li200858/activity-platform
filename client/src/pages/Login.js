@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useLanguage } from '../context/LanguageContext';
+import { api } from '../utils/api';
 
 function Login({ onLogin, onRegister }) {
   const { t } = useLanguage();
@@ -8,6 +9,9 @@ function Login({ onLogin, onRegister }) {
   const [userClass, setUserClass] = useState('');
   const [userID, setUserID] = useState('');
   const [error, setError] = useState('');
+  const [showRecovery, setShowRecovery] = useState(false);
+  const [recovery, setRecovery] = useState({ name: '', class: '', email: '' });
+  const [recoveryMessage, setRecoveryMessage] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -26,6 +30,25 @@ function Login({ onLogin, onRegister }) {
       }
     } catch (err) {
       setError(err.response?.data?.error || (t('common.fail') + ', ' + (t('login.error') || '')));
+    }
+  };
+
+  const handleRecoverySubmit = async (e) => {
+    e.preventDefault();
+    setRecoveryMessage('');
+    if (!recovery.name.trim() || !recovery.class.trim() || !recovery.email.trim()) {
+      setRecoveryMessage(t('login.recoveryFail'));
+      return;
+    }
+    try {
+      await api.post('/id-recovery', { 
+        name: recovery.name.trim(),
+        class: recovery.class.trim(),
+        email: recovery.email.trim()
+      });
+      setRecoveryMessage(t('login.recoverySuccess'));
+    } catch (err) {
+      setRecoveryMessage(err.response?.data?.error || t('login.recoveryFail'));
     }
   };
 
@@ -94,6 +117,57 @@ function Login({ onLogin, onRegister }) {
             {mode === 'login' ? t('login.submitLogin') : t('login.submitRegister')}
           </button>
         </form>
+
+        {/* 找回ID */}
+        <div className="mt-6 border-t pt-4">
+          <button
+            type="button"
+            onClick={() => setShowRecovery(v => !v)}
+            className="text-xs text-blue-600 hover:text-blue-800 underline font-bold"
+          >
+            {t('login.forgotId')}
+          </button>
+          {showRecovery && (
+            <form onSubmit={handleRecoverySubmit} className="mt-3 space-y-3 text-xs">
+              <p className="text-gray-500 mb-1">{t('login.forgotIdDesc')}</p>
+              <div className="grid grid-cols-2 gap-2">
+                <input
+                  type="text"
+                  placeholder={t('login.namePlaceholder')}
+                  value={recovery.name}
+                  onChange={e => setRecovery(r => ({ ...r, name: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-2 py-1"
+                  required
+                />
+                <input
+                  type="text"
+                  placeholder={t('login.classPlaceholder')}
+                  value={recovery.class}
+                  onChange={e => setRecovery(r => ({ ...r, class: e.target.value }))}
+                  className="border border-gray-300 rounded-lg px-2 py-1"
+                  required
+                />
+              </div>
+              <input
+                type="email"
+                placeholder={t('login.emailPlaceholder')}
+                value={recovery.email}
+                onChange={e => setRecovery(r => ({ ...r, email: e.target.value }))}
+                className="border border-gray-300 rounded-lg px-2 py-1 w-full"
+                required
+              />
+              <button
+                type="submit"
+                className="w-full bg-gray-900 text-white py-2 rounded-lg font-bold hover:bg-black transition-colors"
+              >
+                {t('login.submitRecovery')}
+              </button>
+              {recoveryMessage && (
+                <p className="mt-1 text-[11px] text-gray-600">{recoveryMessage}</p>
+              )}
+            </form>
+          )}
+        </div>
 
         {mode === 'register' && (
           <p className="mt-4 text-xs text-gray-500 text-center">

@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { useLanguage } from '../context/LanguageContext';
 
 function AuditStatus({ user }) {
+  const { t } = useLanguage();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -14,6 +16,7 @@ function AuditStatus({ user }) {
   const [clubsForVenue, setClubsForVenue] = useState([]);
   const [venueClubSearchQuery, setVenueClubSearchQuery] = useState('');
   const [venueClubSearchFocused, setVenueClubSearchFocused] = useState(false);
+  const [idRecoveryRequests, setIdRecoveryRequests] = useState([]);
 
   useEffect(() => {
     fetchAuditStatus();
@@ -24,6 +27,7 @@ function AuditStatus({ user }) {
       api.get(`/clubs/venue-requests/all?userID=${user.userID}`).then(r => setVenueRequestsAll(r.data || [])).catch(() => setVenueRequestsAll([]));
       api.get('/clubs/venue-schedule').then(r => setVenueSchedulesAll(r.data || [])).catch(() => setVenueSchedulesAll([]));
       api.get('/clubs/approved').then(r => setClubsForVenue(r.data || [])).catch(() => setClubsForVenue([]));
+      api.get(`/admin/id-recovery?operatorID=${user.userID}`).then(r => setIdRecoveryRequests(r.data || [])).catch(() => setIdRecoveryRequests([]));
     }
   }, [data, user?.userID, user?.role]);
 
@@ -371,6 +375,91 @@ function AuditStatus({ user }) {
                     <li key={s.id} className="p-2 bg-teal-50 rounded-lg border border-teal-100">{s.clubName} · {s.date} · {s.block} · {s.venueName}</li>
                   ))}
                 </ul>
+              )}
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* 管理员：处理找回ID请求 */}
+      {(user.role === 'admin' || user.role === 'super_admin') && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <span className="w-1.5 h-6 bg-purple-600 rounded-full"></span>
+            {t('audit.idRecoveryTitle')}
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-widest">{t('audit.idRecoveryPending')}</h3>
+              {idRecoveryRequests.filter(r => r.status === 'pending').length === 0 ? (
+                <p className="text-gray-300 text-sm">{t('audit.idRecoveryNoPending')}</p>
+              ) : (
+                <div className="space-y-2">
+                  {idRecoveryRequests.filter(r => r.status === 'pending').map(r => (
+                    <div key={r.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-xs flex justify-between items-start gap-3">
+                      <div className="space-y-1">
+                        <p className="font-bold text-gray-800">{r.name} <span className="text-gray-400">· {r.class}</span></p>
+                        <p className="text-gray-600">{t('audit.idRecoveryEmail')}: {r.email}</p>
+                        {r.userIDFound && (
+                          <p className="text-gray-600">
+                            {t('audit.idRecoveryUserID')}: <span className="font-mono text-blue-600">{r.userIDFound}</span>
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {r.userIDFound && (
+                          <button
+                            type="button"
+                            onClick={() => { navigator.clipboard.writeText(r.userIDFound); alert(t('audit.idRecoveryCopied')); }}
+                            className="px-3 py-1 rounded-lg bg-blue-50 text-blue-600 font-bold hover:bg-blue-600 hover:text-white"
+                          >
+                            {t('audit.idRecoveryCopy')}
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await api.post(`/admin/id-recovery/${r.id}/resolve`, { operatorID: user.userID, note: '' });
+                              const res = await api.get(`/admin/id-recovery?operatorID=${user.userID}`);
+                              setIdRecoveryRequests(res.data || []);
+                            } catch (e) {
+                              alert(e.response?.data?.error || '操作失败');
+                            }
+                          }}
+                          className="px-3 py-1 rounded-lg bg-gray-900 text-white font-bold hover:bg-black"
+                        >
+                          {t('audit.idRecoveryMarkDone')}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-widest">{t('audit.idRecoveryResolved')}</h3>
+              {idRecoveryRequests.filter(r => r.status === 'resolved').length === 0 ? (
+                <p className="text-gray-300 text-sm">{t('audit.idRecoveryNoResolved')}</p>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-auto pr-1">
+                  {idRecoveryRequests.filter(r => r.status === 'resolved').map(r => (
+                    <div key={r.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px]">
+                      <p className="font-bold text-gray-800">{r.name} <span className="text-gray-400">· {r.class}</span></p>
+                      <p className="text-gray-500">{t('audit.idRecoveryEmail')}: {r.email}</p>
+                      {r.userIDFound && (
+                        <p className="text-gray-500">
+                          {t('audit.idRecoveryUserID')}: <span className="font-mono text-blue-600">{r.userIDFound}</span>
+                        </p>
+                      )}
+                      {r.operatorID && (
+                        <p className="text-gray-400 mt-1">
+                          {t('audit.idRecoveryHandledBy')}: {r.operatorID}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
               )}
             </section>
           </div>

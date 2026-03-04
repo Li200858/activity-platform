@@ -10,7 +10,7 @@ const { v4: uuidv4 } = require('uuid');
 const XLSX = require('xlsx');
 const { 
   mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification, SemesterRotation,
-  ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest, ClubVenueSchedule
+  ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest, ClubVenueSchedule, IDRecoveryRequest
 } = require('./db');
 
 const app = express();
@@ -138,6 +138,57 @@ app.put('/api/user/english-name', async (req, res) => {
     const userObj = user.toObject();
     userObj.id = user._id.toString();
     res.json(userObj);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 提交找回ID请求（登录页使用）
+app.post('/api/id-recovery', async (req, res) => {
+  try {
+    const { name, class: userClass, email } = req.body;
+    if (!name || !userClass || !email) return res.status(400).json({ error: '缺少姓名、班级或邮箱' });
+    const user = await User.findOne({ name, class: userClass });
+    const userIDFound = user ? user.userID : null;
+    const reqDoc = await IDRecoveryRequest.create({
+      name,
+      class: userClass,
+      email,
+      userIDFound,
+      status: 'pending'
+    });
+    res.json({ success: true, id: reqDoc._id.toString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 管理员查看找回ID请求列表
+app.get('/api/admin/id-recovery', async (req, res) => {
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可查看' });
+    const list = await IDRecoveryRequest.find().sort({ createdAt: -1 }).lean();
+    res.json(list.map(r => ({ ...r, id: r._id.toString() })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 管理员标记找回ID请求已处理
+app.post('/api/admin/id-recovery/:id/resolve', async (req, res) => {
+  try {
+    const { operatorID, note } = req.body;
+    const { id } = req.params;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可操作' });
+    const doc = await IDRecoveryRequest.findById(id);
+    if (!doc) return res.status(404).json({ error: '请求不存在' });
+    doc.status = 'resolved';
+    doc.operatorID = operatorID;
+    doc.note = note || '';
+    doc.resolvedAt = new Date();
+    await doc.save();
+    const plain = doc.toObject();
+    plain.id = doc._id.toString();
+    res.json(plain);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

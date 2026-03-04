@@ -152,6 +152,18 @@ const ClubVenueScheduleSchema = new mongoose.Schema({
   venueName: { type: String, required: true }
 }, { timestamps: true });
 
+// 用户找回ID请求
+const IDRecoveryRequestSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  class: { type: String, required: true },
+  email: { type: String, required: true },
+  userIDFound: { type: String }, // 系统根据姓名+班级预匹配到的 userID（如有）
+  status: { type: String, enum: ['pending', 'resolved'], default: 'pending' },
+  note: { type: String },
+  operatorID: { type: String }, // 处理该请求的管理员ID
+  resolvedAt: { type: Date }
+}, { timestamps: true });
+
 // 创建模型
 const User = mongoose.model('User', UserSchema);
 const Club = mongoose.model('Club', ClubSchema);
@@ -165,6 +177,7 @@ const ClubAttendanceSession = mongoose.model('ClubAttendanceSession', ClubAttend
 const ClubAttendanceRecord = mongoose.model('ClubAttendanceRecord', ClubAttendanceRecordSchema);
 const ClubVenueRequest = mongoose.model('ClubVenueRequest', ClubVenueRequestSchema);
 const ClubVenueSchedule = mongoose.model('ClubVenueSchedule', ClubVenueScheduleSchema);
+const IDRecoveryRequest = mongoose.model('IDRecoveryRequest', IDRecoveryRequestSchema);
 
 // 为了兼容Sequelize的API，创建一些包装方法
 const sequelize = {
@@ -199,5 +212,6 @@ module.exports = {
   ClubAttendanceSession,
   ClubAttendanceRecord,
   ClubVenueRequest,
-  ClubVenueSchedule
+  ClubVenueSchedule,
+  IDRecoveryRequest
 };
