@@ -1338,6 +1338,30 @@ app.post('/api/admin/set-role', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 管理员删除普通用户账户（仅能删除 role 为 user 的账户，防止无用 ID 占用）
+app.delete('/api/admin/users/:userID', async (req, res) => {
+  try {
+    const { userID: targetUserID } = req.params;
+    const operatorID = req.query.operatorID;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可删除用户' });
+    const target = await User.findOne({ userID: targetUserID });
+    if (!target) return res.status(404).json({ error: '用户不存在' });
+    if (target.role !== 'user') return res.status(403).json({ error: '只能删除普通用户账户，不能删除管理员或超级管理员' });
+    if (operatorID === targetUserID) return res.status(400).json({ error: '不能删除自己的账户' });
+    const foundedClubs = await Club.countDocuments({ founderID: targetUserID });
+    if (foundedClubs > 0) return res.status(400).json({ error: '该用户创建了社团，请先解散或转移后再删除账户' });
+    await ClubMember.deleteMany({ userID: targetUserID });
+    await ActivityRegistration.deleteMany({ userID: targetUserID });
+    await Feedback.deleteMany({ authorID: targetUserID });
+    await Notification.deleteMany({ userID: targetUserID });
+    await SemesterRotation.deleteMany({ userID: targetUserID });
+    await User.deleteOne({ userID: targetUserID });
+    res.json({ success: true, message: '账户已删除' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/clubs/document', async (req, res) => {
   try { 
     const clubs = await Club.find({ status: 'approved' });

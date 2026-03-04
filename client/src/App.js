@@ -102,6 +102,18 @@ function App() {
     }
   };
 
+  const handleDeleteUser = async (targetUserID, targetName) => {
+    if (!window.confirm(isEn ? `Delete account "${targetName}"? This cannot be undone.` : `确定删除用户「${targetName}」的账户？此操作不可恢复。`)) return;
+    try {
+      await api.delete(`/admin/users/${targetUserID}?operatorID=${encodeURIComponent(user.userID)}`);
+      alert(isEn ? 'Account deleted' : '账户已删除');
+      const res = await api.get(`/search?q=${searchQuery}&operatorID=${user.userID}`);
+      setSearchResults(res.data);
+    } catch (err) {
+      alert(err.response?.data?.error || (isEn ? 'Delete failed' : '删除失败'));
+    }
+  };
+
   if (!user) {
     return <Login onLogin={login} onRegister={register} />;
   }
@@ -213,6 +225,7 @@ function App() {
                       <p className="text-xs text-gray-400 mt-0.5">{u.class}</p>
                       {u.userID && <p className="text-[10px] text-blue-500 font-mono mt-2 bg-blue-50 inline-block px-2 py-0.5 rounded-md">ID: {u.userID}</p>}
                     </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
                     {user.role === 'super_admin' && u.name !== user.name && (
                       <button 
                         onClick={() => handleSetRole(u.userID, u.role === 'user' ? 'admin' : 'user')} 
@@ -221,6 +234,15 @@ function App() {
                         {u.role === 'user' ? t('app.setAdmin') : t('app.cancelRole')}
                       </button>
                     )}
+                    {(user.role === 'admin' || user.role === 'super_admin') && u.role === 'user' && u.userID !== user.userID && (
+                      <button 
+                        onClick={() => handleDeleteUser(u.userID, u.name)} 
+                        className="text-[10px] px-4 py-2 rounded-xl font-black bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600 transition-all"
+                      >
+                        {isEn ? 'Delete account' : '删除账户'}
+                      </button>
+                    )}
+                  </div>
                   </div>
                 ))}
               </div>
