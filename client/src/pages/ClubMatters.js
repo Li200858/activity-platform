@@ -4,7 +4,8 @@ import { api } from '../utils/api';
 function ClubMatters({ user }) {
   const [view, setView] = useState('menu'); // menu, rotation, registration, creation, members, attendance, venue
   const [clubs, setClubs] = useState([]);
-  const [myClub, setMyClub] = useState(null); // 周三社团（仅一个）
+  const [myClub, setMyClub] = useState(null); // 周三社团第一个（兼容）
+  const [myWednesdayClubs, setMyWednesdayClubs] = useState([]); // 周三社团列表（最多4时段，至少2个）
   const [myDailyClubs, setMyDailyClubs] = useState([]); // 日常社团（可多个）
   const [selectedClubDetail, setSelectedClubDetail] = useState(null);
   const [members, setMembers] = useState(null); // { clubName, members: [] }
@@ -33,6 +34,7 @@ function ClubMatters({ user }) {
   const [editCategoryTypeForm, setEditCategoryTypeForm] = useState({ category: '', type: 'activity', blocks: [], intro: '' });
   const [clubSearchQuery, setClubSearchQuery] = useState(''); // 社团报名/轮换 搜索
   const [clubSearchFocused, setClubSearchFocused] = useState(false);
+  const [rotateTargetClubId, setRotateTargetClubId] = useState(null); // 轮换时选择要替换成的社团，再选要替换的
 
   useEffect(() => {
     fetchClubs();
@@ -55,11 +57,14 @@ function ClubMatters({ user }) {
   const fetchMyClub = async () => {
     try {
       const res = await api.get(`/clubs/my/${user.userID}`);
-      setMyClub(res.data?.wednesday ?? null);
+      const wedList = res.data?.wednesdayClubs ?? (res.data?.wednesday ? [res.data.wednesday] : []);
+      setMyWednesdayClubs(wedList);
+      setMyClub(res.data?.wednesday ?? wedList[0] ?? null);
       setMyDailyClubs(res.data?.daily ?? []);
     } catch (e) {
       console.error("无法获取个人社团状态", e);
       setMyClub(null);
+      setMyWednesdayClubs([]);
       setMyDailyClubs([]);
     }
   };
@@ -174,10 +179,13 @@ function ClubMatters({ user }) {
     }
   };
 
-  const handleRotate = async (clubID) => {
+  const handleRotate = async (newClubID, oldClubID) => {
     try {
-      await api.post('/clubs/rotate', { userID: user.userID, newClubID: clubID });
+      const payload = { userID: user.userID, newClubID };
+      if (oldClubID) payload.oldClubID = oldClubID;
+      await api.post('/clubs/rotate', payload);
       alert('社团轮换成功');
+      setRotateTargetClubId(null);
       fetchMyClub();
       fetchClubs();
       const res = await api.get(`/clubs/rotation-quota?userID=${user.userID}`);
@@ -388,23 +396,41 @@ function ClubMatters({ user }) {
           <div className="flex justify-between items-center">
             <div>
               <span className="text-xs font-bold text-gray-500 mr-2">周三社团</span>
-              {myClub ? (
-                <div className="flex items-center gap-3">
-                  <span className="text-lg font-black text-gray-800">{myClub.Club?.name || '未知社团'}</span>
-                  <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
-                    myClub.status === 'approved' ? 'bg-green-50 text-green-600' :
-                    myClub.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
-                  }`}>
-                    {myClub.status === 'approved' ? '已加入' : myClub.status === 'rejected' ? '被拒绝' : '审核中'}
-                  </span>
-                </div>
+              <span className="text-[10px] text-gray-400 ml-2">（最多 4 时段，至少 2 个社团）</span>
+              {myWednesdayClubs.length === 0 ? (
+                <p className="text-gray-400 text-sm italic mt-1">暂未加入</p>
               ) : (
-                <p className="text-gray-400 text-sm italic">暂未加入</p>
+                <>
+                  <p className="text-xs text-blue-600 font-bold mt-1">已选 {(() => {
+                    const used = new Set();
+                    myWednesdayClubs.forEach(m => { const c = m.Club || m.clubID; (c?.blocks || []).forEach(b => used.add(b)); });
+                    return used.size;
+                  })()} / 4 时段</p>
+                  <ul className="mt-2 space-y-2">
+                    {myWednesdayClubs.map(m => {
+                      const c = m.Club || m.clubID;
+                      return (
+                        <li key={c?.id || m.id} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-2">
+                          <span className="font-bold text-gray-800">{c?.name || '未知'}</span>
+                          <span className="flex items-center gap-2">
+                            <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
+                              m.status === 'approved' ? 'bg-green-50 text-green-600' :
+                              m.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
+                            }`}>
+                              {m.status === 'approved' ? '已加入' : m.status === 'rejected' ? '被拒绝' : '审核中'}
+                            </span>
+                            <button onClick={() => handleLeaveClub(c?.id)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">退出</button>
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  {myWednesdayClubs.length < 2 && (
+                    <p className="text-amber-600 text-xs font-medium mt-2">至少需选 2 个周三社团</p>
+                  )}
+                </>
               )}
             </div>
-            {myClub?.Club?.id && (
-              <button onClick={() => handleLeaveClub(myClub.Club.id)} className="px-4 py-2 bg-red-50 text-red-600 rounded-xl text-xs font-black hover:bg-red-600 hover:text-white transition-all shadow-sm">退出</button>
-            )}
           </div>
           <div>
             <span className="text-xs font-bold text-gray-500 mr-2">日常社团</span>
@@ -430,11 +456,11 @@ function ClubMatters({ user }) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
               <button 
                 onClick={() => {
-                  if (!myClub) return alert('请先报名一个周三社团才能进行轮换');
+                  if (myWednesdayClubs.length === 0) return alert('请先报名至少一个周三社团才能进行轮换');
                   setView('rotation');
                 }} 
                 className={`p-6 rounded-2xl flex flex-col items-center gap-3 transition-all hover:scale-105 active:scale-95 ${
-                  !myClub ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white'
+                  myWednesdayClubs.length === 0 ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white'
                 }`}
               >
                 <span className="font-black">社团轮换</span>
@@ -598,7 +624,19 @@ function ClubMatters({ user }) {
             {(() => {
               const dailyClubs = clubs.filter(c => c.category === 'daily' || c.category === 'both');
               const wednesdayClubs = clubs.filter(c => c.category === 'wednesday' || c.category === 'both');
-              const alreadyInWednesday = !!myClub;
+              const wednesdayUsedBlocks = () => {
+                const used = new Set();
+                myWednesdayClubs.forEach(m => { const c = m.Club || m.clubID; (c?.blocks || []).forEach(b => used.add(b)); });
+                return used;
+              };
+              const canJoinWednesday = (club) => {
+                const alreadyIn = myWednesdayClubs.some(m => (m.Club?.id || m.clubID) === club.id);
+                if (alreadyIn) return false;
+                const used = wednesdayUsedBlocks();
+                const blocks = club.blocks || [];
+                if (blocks.some(b => used.has(b))) return false;
+                return used.size + blocks.length <= 4;
+              };
               const renderClubRow = (club, canJoin) => (
                 <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-green-200 transition-colors">
                   <button onClick={() => setSelectedClubDetail(club)} className="text-left group flex-1">
@@ -619,7 +657,7 @@ function ClubMatters({ user }) {
                         : 'bg-green-600 text-white hover:scale-105 active:scale-95 shadow-green-100'
                     }`}
                   >
-                    {club.capacity && club.memberCount >= club.capacity ? '人数已满' : !canJoin ? '已加入周三社团' : '立即报名'}
+                    {club.capacity && club.memberCount >= club.capacity ? '人数已满' : !canJoin ? '已选或时段冲突' : '立即报名'}
                   </button>
                 </div>
               );
@@ -632,9 +670,9 @@ function ClubMatters({ user }) {
                     )}
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-wider mb-2">周三社团（限报一个，可轮换）</h3>
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-wider mb-2">周三社团（最多 4 时段，至少 2 个社团，每时段只能选一个）</h3>
                     {wednesdayClubs.length === 0 ? <p className="text-center py-6 text-gray-400 italic">暂无周三社团</p> : (
-                      <div className="grid gap-4">{wednesdayClubs.map(c => renderClubRow(c, !alreadyInWednesday))}</div>
+                      <div className="grid gap-4">{wednesdayClubs.map(c => renderClubRow(c, canJoinWednesday(c)))}</div>
                     )}
                   </div>
                 </div>
@@ -676,7 +714,8 @@ function ClubMatters({ user }) {
               />
               {clubSearchQuery.trim() && clubSearchFocused && (() => {
                 const q = clubSearchQuery.trim().toLowerCase();
-                const rotationList = clubs.filter(c => (c.category === 'wednesday' || c.category === 'both') && c.id !== myClub?.Club?.id && c.id !== myClub?.clubID);
+                const myWedIds = new Set(myWednesdayClubs.map(m => (m.Club || m.clubID)?.id).filter(Boolean));
+                const rotationList = clubs.filter(c => (c.category === 'wednesday' || c.category === 'both') && !myWedIds.has(c.id));
                 const list = rotationList.filter(c => c.name.toLowerCase().includes(q));
                 if (list.length === 0) return <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-2 text-sm text-gray-500 text-center">无匹配社团</div>;
                 return (
@@ -684,15 +723,15 @@ function ClubMatters({ user }) {
                     {list.map(c => {
                       const quotaUsed = rotationQuota ? rotationQuota.used >= rotationQuota.limit : false;
                       return (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => { setSelectedClubDetail(c); setClubSearchQuery(''); }}
-                          className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b border-gray-50 last:border-0 transition-colors flex justify-between items-center"
-                        >
-                          <span className="font-bold text-gray-800">{c.name}</span>
-                          <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold">{c.memberCount} / {c.capacity}</span>
-                        </button>
+<button
+                      key={c.id}
+                      type="button"
+                      onClick={() => { setSelectedClubDetail(c); setClubSearchQuery(''); }}
+                      className="w-full text-left px-4 py-3 hover:bg-blue-50 border-b border-gray-50 last:border-0 transition-colors flex justify-between items-center"
+                    >
+                      <span className="font-bold text-gray-800">{c.name}</span>
+                      <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold">{c.memberCount} / {c.capacity}</span>
+                    </button>
                       );
                     })}
                   </div>
@@ -700,7 +739,7 @@ function ClubMatters({ user }) {
               })()}
             </div>
             <div className="grid gap-4">
-              {clubs.filter(c => (c.category === 'wednesday' || c.category === 'both') && c.id !== myClub?.Club?.id && c.id !== myClub?.clubID).map(club => {
+              {clubs.filter(c => (c.category === 'wednesday' || c.category === 'both') && !(myWednesdayClubs.map(m => (m.Club || m.clubID)?.id).filter(Boolean).includes(c.id))).map(club => {
                 const quotaUsed = rotationQuota ? rotationQuota.used >= rotationQuota.limit : false;
                 return (
                   <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-blue-200 transition-colors">
@@ -711,7 +750,10 @@ function ClubMatters({ user }) {
                       </span>
                     </button>
                     <button
-                      onClick={() => handleRotate(club.id)}
+                      onClick={() => {
+                        if (myWednesdayClubs.length === 1) handleRotate(club.id, (myWednesdayClubs[0].Club || myWednesdayClubs[0].clubID)?.id);
+                        else setRotateTargetClubId(club.id);
+                      }}
                       disabled={quotaUsed}
                       className={quotaUsed ? 'bg-gray-400 text-white px-6 py-2 rounded-xl font-black cursor-not-allowed' : 'bg-blue-600 text-white px-6 py-2 rounded-xl font-black shadow-lg shadow-blue-100 hover:scale-105 active:scale-95 transition-all'}
                     >
@@ -721,6 +763,32 @@ function ClubMatters({ user }) {
                 );
               })}
             </div>
+            {/* 轮换时选择要替换的社团（多个周三社团时） */}
+            {rotateTargetClubId && myWednesdayClubs.length > 1 && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setRotateTargetClubId(null)}>
+                <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+                  <h3 className="font-black text-gray-800 mb-4">选择要替换的社团</h3>
+                  <p className="text-sm text-gray-500 mb-4">将您当前的一个周三社团更换为刚选择的社团</p>
+                  <ul className="space-y-2">
+                    {myWednesdayClubs.map(m => {
+                      const c = m.Club || m.clubID;
+                      return (
+                        <li key={c?.id}>
+                          <button
+                            type="button"
+                            onClick={() => handleRotate(rotateTargetClubId, c?.id)}
+                            className="w-full text-left px-4 py-3 rounded-xl bg-blue-50 text-blue-700 font-bold hover:bg-blue-100"
+                          >
+                            {c?.name}
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <button type="button" onClick={() => setRotateTargetClubId(null)} className="mt-4 w-full py-2 text-gray-500 font-bold">取消</button>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1279,8 +1347,13 @@ function ClubMatters({ user }) {
                 {/* 报名按钮 - 从社团报名页打开详情时显示 */}
                 {view === 'registration' && (() => {
                   const isWednesday = selectedClubDetail.category === 'wednesday' || selectedClubDetail.category === 'both';
-                  const alreadyInWednesday = !!myClub;
-                  const canJoin = isWednesday ? !alreadyInWednesday : true;
+                  const usedBlocks = new Set();
+                  myWednesdayClubs.forEach(m => { const c = m.Club || m.clubID; (c?.blocks || []).forEach(b => usedBlocks.add(b)); });
+                  const alreadyIn = myWednesdayClubs.some(m => (m.Club || m.clubID)?.id === selectedClubDetail.id);
+                  const blocks = selectedClubDetail.blocks || [];
+                  const noOverlap = !blocks.some(b => usedBlocks.has(b));
+                  const canAdd = usedBlocks.size + blocks.length <= 4;
+                  const canJoin = isWednesday ? !alreadyIn && noOverlap && canAdd : true;
                   const full = selectedClubDetail.capacity && selectedClubDetail.memberCount >= selectedClubDetail.capacity;
                   const disabled = !canJoin || full;
                   return (
@@ -1291,16 +1364,25 @@ function ClubMatters({ user }) {
                         disabled ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105 active:scale-95'
                       }`}
                     >
-                      {full ? '人数已满' : !canJoin ? '已加入周三社团' : '立即报名'}
+                      {full ? '人数已满' : !canJoin ? '已选或时段冲突' : '立即报名'}
                     </button>
                   );
                 })()}
                 {/* 更换为此社团 - 从社团轮换页打开详情时显示 */}
-                {view === 'rotation' && selectedClubDetail.id !== myClub?.Club?.id && selectedClubDetail.id !== myClub?.clubID && (selectedClubDetail.category === 'wednesday' || selectedClubDetail.category === 'both') && (() => {
+                {view === 'rotation' && !myWednesdayClubs.some(m => (m.Club || m.clubID)?.id === selectedClubDetail.id) && (selectedClubDetail.category === 'wednesday' || selectedClubDetail.category === 'both') && (() => {
                   const quotaUsed = rotationQuota != null && rotationQuota.used >= rotationQuota.limit;
                   return (
                     <button
-                      onClick={() => { if (!quotaUsed) handleRotate(selectedClubDetail.id); }}
+                      onClick={() => {
+                        if (quotaUsed) return;
+                        if (myWednesdayClubs.length === 1) {
+                          handleRotate(selectedClubDetail.id, (myWednesdayClubs[0].Club || myWednesdayClubs[0].clubID)?.id);
+                          setSelectedClubDetail(null);
+                        } else {
+                          setRotateTargetClubId(selectedClubDetail.id);
+                          setSelectedClubDetail(null);
+                        }
+                      }}
                       disabled={quotaUsed}
                       className={`px-6 py-3 rounded-2xl font-black transition-all ${
                         quotaUsed ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 active:scale-95'
