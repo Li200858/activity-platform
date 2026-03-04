@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { useLanguage } from '../context/LanguageContext';
+import { TranslatableContent } from '../components/TranslatableContent';
 
 function ClubMatters({ user }) {
+  const { t, isEn } = useLanguage();
   const [view, setView] = useState('menu'); // menu, rotation, registration, creation, members, attendance, venue
   const [clubs, setClubs] = useState([]);
   const [myClub, setMyClub] = useState(null); // 周三社团第一个（兼容）
@@ -391,57 +394,57 @@ function ClubMatters({ user }) {
     <div className="space-y-6">
       {/* 当前社团状态卡片：周三社团（一个）+ 日常社团（多个） */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
-        <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">我的社团状态</h2>
+        <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">{t('club.menu')}</h2>
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <div>
-              <span className="text-xs font-bold text-gray-500 mr-2">周三社团</span>
-              <span className="text-[10px] text-gray-400 ml-2">（最多 4 时段，至少 2 个社团）</span>
+              <span className="text-xs font-bold text-gray-500 mr-2">{t('club.wednesday')}</span>
+              <span className="text-[10px] text-gray-400 ml-2">{t('club.wednesdayHint')}</span>
               {myWednesdayClubs.length === 0 ? (
-                <p className="text-gray-400 text-sm italic mt-1">暂未加入</p>
+                <p className="text-gray-400 text-sm italic mt-1">{t('club.notJoined')}</p>
               ) : (
                 <>
-                  <p className="text-xs text-blue-600 font-bold mt-1">已选 {(() => {
+                  <p className="text-xs text-blue-600 font-bold mt-1">{t('club.usedSlots')} {(() => {
                     const used = new Set();
                     myWednesdayClubs.forEach(m => { const c = m.Club || m.clubID; (c?.blocks || []).forEach(b => used.add(b)); });
                     return used.size;
-                  })()} / 4 时段</p>
+                  })()} / {t('club.slotsTotal')}</p>
                   <ul className="mt-2 space-y-2">
                     {myWednesdayClubs.map(m => {
                       const c = m.Club || m.clubID;
                       return (
                         <li key={c?.id || m.id} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-2">
-                          <span className="font-bold text-gray-800">{c?.name || '未知'}</span>
+                          <span className="font-bold text-gray-800"><TranslatableContent>{c?.name || (isEn ? 'Unknown' : '未知')}</TranslatableContent></span>
                           <span className="flex items-center gap-2">
                             <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
                               m.status === 'approved' ? 'bg-green-50 text-green-600' :
                               m.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
                             }`}>
-                              {m.status === 'approved' ? '已加入' : m.status === 'rejected' ? '被拒绝' : '审核中'}
+                              {m.status === 'approved' ? (isEn ? 'Joined' : '已加入') : m.status === 'rejected' ? (isEn ? 'Rejected' : '被拒绝') : (isEn ? 'Pending' : '审核中')}
                             </span>
-                            <button onClick={() => handleLeaveClub(c?.id)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">退出</button>
+                            <button onClick={() => handleLeaveClub(c?.id)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
                           </span>
                         </li>
                       );
                     })}
                   </ul>
                   {myWednesdayClubs.length < 2 && (
-                    <p className="text-amber-600 text-xs font-medium mt-2">至少需选 2 个周三社团</p>
+                    <p className="text-amber-600 text-xs font-medium mt-2">{t('club.needTwo')}</p>
                   )}
                 </>
               )}
             </div>
           </div>
           <div>
-            <span className="text-xs font-bold text-gray-500 mr-2">日常社团</span>
+            <span className="text-xs font-bold text-gray-500 mr-2">{t('club.daily')}</span>
             {myDailyClubs.length === 0 ? (
-              <p className="text-gray-400 text-sm italic mt-1">暂未加入</p>
+              <p className="text-gray-400 text-sm italic mt-1">{t('club.notJoined')}</p>
             ) : (
               <ul className="mt-2 space-y-2">
                 {myDailyClubs.map(m => (
                   <li key={m.Club?.id || m.clubID} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-2">
-                    <span className="font-bold text-gray-800">{m.Club?.name || '未知'}</span>
-                    <button onClick={() => handleLeaveClub(m.Club?.id || m.clubID)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">退出</button>
+                    <span className="font-bold text-gray-800"><TranslatableContent>{m.Club?.name || (isEn ? 'Unknown' : '未知')}</TranslatableContent></span>
+                    <button onClick={() => handleLeaveClub(m.Club?.id || m.clubID)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
                   </li>
                 ))}
               </ul>
@@ -456,27 +459,27 @@ function ClubMatters({ user }) {
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
               <button 
                 onClick={() => {
-                  if (myWednesdayClubs.length === 0) return alert('请先报名至少一个周三社团才能进行轮换');
+                  if (myWednesdayClubs.length === 0) return alert(t('club.needOneWednesday'));
                   setView('rotation');
                 }} 
                 className={`p-6 rounded-2xl flex flex-col items-center gap-3 transition-all hover:scale-105 active:scale-95 ${
                   myWednesdayClubs.length === 0 ? 'bg-gray-100 opacity-50 cursor-not-allowed' : 'bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white'
                 }`}
               >
-                <span className="font-black">社团轮换</span>
-                <span className="text-xs opacity-80">仅周三社团</span>
+                <span className="font-black">{t('club.rotation')}</span>
+                <span className="text-xs opacity-80">{t('club.rotationHint')}</span>
               </button>
               
               <button 
                 onClick={() => setView('registration')} 
                 className="p-6 rounded-2xl flex flex-col items-center gap-3 transition-all hover:scale-105 active:scale-95 bg-green-50 text-green-600 hover:bg-green-600 hover:text-white"
               >
-                <span className="font-black">社团报名</span>
-                <span className="text-xs opacity-80">日常 / 周三</span>
+                <span className="font-black">{t('club.registration')}</span>
+                <span className="text-xs opacity-80">{t('club.registrationHint')}</span>
               </button>
 
               <button onClick={() => setView('creation')} className="bg-purple-50 text-purple-600 p-6 rounded-2xl flex flex-col items-center gap-3 hover:bg-purple-600 hover:text-white transition-all hover:scale-105 active:scale-95">
-                <span className="font-black">社团创建</span>
+                <span className="font-black">{t('club.creation')}</span>
               </button>
             </div>
 
@@ -486,19 +489,19 @@ function ClubMatters({ user }) {
                 const list = cat === 'daily'
                   ? clubs.filter(c => c.category === 'daily' || c.category === 'both')
                   : clubs.filter(c => c.category === 'wednesday' || c.category === 'both');
-                const title = cat === 'daily' ? '日常社团' : '周三社团';
+                const title = cat === 'daily' ? t('club.daily') : t('club.wednesday');
                 return (
                   <div key={cat}>
                     <h3 className="text-lg font-black text-gray-800 mb-4">{title}</h3>
                     {list.length === 0 ? (
-                      <p className="text-center py-6 text-gray-400 italic">暂无{title}</p>
+                      <p className="text-center py-6 text-gray-400 italic">{cat === 'daily' ? t('club.noDaily') : t('club.noWednesday')}</p>
                     ) : (
                       <div className="grid gap-4">
                         {list.map(club => (
                     <div key={club.id} className="bg-gray-50 p-5 rounded-2xl border border-gray-100 hover:border-blue-200 transition-colors">
                       <div className="flex justify-between items-start mb-3">
                         <div className="flex-1">
-                          <h4 className="font-black text-gray-800 text-lg mb-2">{club.name}</h4>
+                          <h4 className="font-black text-gray-800 text-lg mb-2"><TranslatableContent>{club.name}</TranslatableContent></h4>
                           <div className="flex items-center gap-3 text-sm text-gray-600 mb-2 flex-wrap">
                             <span>
                               创建者: {club.founderName || '未知'}
@@ -584,14 +587,14 @@ function ClubMatters({ user }) {
         {view === 'registration' && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-black text-gray-800">社团报名</h2>
-              <button onClick={() => setView('menu')} className="text-xs font-bold text-gray-400 hover:text-blue-600">返回菜单</button>
+              <h2 className="text-xl font-black text-gray-800">{t('club.registration')}</h2>
+              <button onClick={() => setView('menu')} className="text-xs font-bold text-gray-400 hover:text-blue-600">{t('club.backMenu')}</button>
             </div>
-            {/* 搜索社团：输入后弹出列表，点击选择 */}
+            {/* 搜索社团 */}
             <div className="relative mb-6">
               <input
                 type="text"
-                placeholder="搜索社团名称，选择后可直接查看或报名"
+                placeholder={t('club.searchClub')}
                 value={clubSearchQuery}
                 onChange={e => setClubSearchQuery(e.target.value)}
                 onFocus={() => setClubSearchFocused(true)}
@@ -640,9 +643,9 @@ function ClubMatters({ user }) {
               const renderClubRow = (club, canJoin) => (
                 <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-green-200 transition-colors">
                   <button onClick={() => setSelectedClubDetail(club)} className="text-left group flex-1">
-                    <h3 className="font-black text-gray-800 text-lg group-hover:text-blue-600 transition-colors">{club.name}</h3>
+                    <h3 className="font-black text-gray-800 text-lg group-hover:text-blue-600 transition-colors"><TranslatableContent>{club.name}</TranslatableContent></h3>
                     <div className="flex items-center gap-2 mt-1">
-                      <p className="text-xs text-gray-500 line-clamp-1">{club.intro}</p>
+                      <p className="text-xs text-gray-500 line-clamp-1"><TranslatableContent>{club.intro || ''}</TranslatableContent></p>
                       <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold">
                         {club.memberCount} / {club.capacity} 人
                       </span>
@@ -657,21 +660,21 @@ function ClubMatters({ user }) {
                         : 'bg-green-600 text-white hover:scale-105 active:scale-95 shadow-green-100'
                     }`}
                   >
-                    {club.capacity && club.memberCount >= club.capacity ? '人数已满' : !canJoin ? '已选或时段冲突' : '立即报名'}
+                    {club.capacity && club.memberCount >= club.capacity ? t('common.full') : !canJoin ? t('club.alreadyOrConflict') : t('club.join')}
                   </button>
                 </div>
               );
               return (
                 <div className="space-y-8">
                   <div>
-                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-wider mb-2">日常社团（周三除外，可报多个）</h3>
-                    {dailyClubs.length === 0 ? <p className="text-center py-6 text-gray-400 italic">暂无日常社团</p> : (
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-wider mb-2">{t('club.dailyClubs')}</h3>
+                    {dailyClubs.length === 0 ? <p className="text-center py-6 text-gray-400 italic">{t('club.noDaily')}</p> : (
                       <div className="grid gap-4">{dailyClubs.map(c => renderClubRow(c, true))}</div>
                     )}
                   </div>
                   <div>
-                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-wider mb-2">周三社团（最多 4 时段，至少 2 个社团，每时段只能选一个）</h3>
-                    {wednesdayClubs.length === 0 ? <p className="text-center py-6 text-gray-400 italic">暂无周三社团</p> : (
+                    <h3 className="text-sm font-black text-gray-500 uppercase tracking-wider mb-2">{t('club.wednesdayClubs')}</h3>
+                    {wednesdayClubs.length === 0 ? <p className="text-center py-6 text-gray-400 italic">{t('club.noWednesday')}</p> : (
                       <div className="grid gap-4">{wednesdayClubs.map(c => renderClubRow(c, canJoinWednesday(c)))}</div>
                     )}
                   </div>
@@ -685,12 +688,12 @@ function ClubMatters({ user }) {
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
             <div className="flex justify-between items-center mb-6 flex-wrap gap-2">
               <div>
-                <h2 className="text-xl font-black text-gray-800">社团轮换</h2>
-                <p className="text-[10px] text-orange-500 font-bold mt-1 uppercase tracking-widest">开放时间：周日 17:00 - 周四 21:50</p>
+                <h2 className="text-xl font-black text-gray-800">{t('club.rotation')}</h2>
+                <p className="text-[10px] text-orange-500 font-bold mt-1 uppercase tracking-widest">{t('club.rotationTime')}</p>
                 {rotationQuota != null && (
                   <p className={`text-sm font-bold mt-2 ${rotationQuota.used >= rotationQuota.limit ? 'text-red-600' : 'text-gray-600'}`}>
-                    {rotationQuota.semesterLabel || '本学期'}已轮换 {rotationQuota.used} / {rotationQuota.limit} 次
-                    {rotationQuota.used >= rotationQuota.limit && '（已用完）'}
+                    {rotationQuota.semesterLabel || (isEn ? 'This semester' : '本学期')} {t('club.semesterUsed')} {rotationQuota.used} / {rotationQuota.limit} {t('club.times')}
+                    {rotationQuota.used >= rotationQuota.limit && (isEn ? ' (used up)' : '（已用完）')}
                   </p>
                 )}
               </div>
@@ -711,7 +714,7 @@ function ClubMatters({ user }) {
                     }}
                     className="text-xs font-bold text-amber-600 hover:text-amber-800 border border-amber-300 rounded-lg px-3 py-1.5"
                   >
-                    重置本学期次数
+                    {t('club.resetQuota')}
                   </button>
                 )}
                 <button onClick={() => setView('menu')} className="text-xs font-bold text-gray-400 hover:text-blue-600">返回菜单</button>
@@ -719,14 +722,14 @@ function ClubMatters({ user }) {
             </div>
             {rotationQuota != null && rotationQuota.used >= rotationQuota.limit && (
               <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
-                本学期轮换次数已用完，无法继续轮换，请等待下一学期。
+                {t('club.quotaExhausted')}
               </div>
             )}
             {/* 搜索社团：输入后弹出可轮换的社团列表，点击选择 */}
             <div className="relative mb-6">
               <input
                 type="text"
-                placeholder="搜索社团名称，选择后可直接更换或查看"
+                placeholder={t('club.searchRotation')}
                 value={clubSearchQuery}
                 onChange={e => setClubSearchQuery(e.target.value)}
                 onFocus={() => setClubSearchFocused(true)}
@@ -778,7 +781,7 @@ function ClubMatters({ user }) {
                       disabled={quotaUsed}
                       className={quotaUsed ? 'bg-gray-400 text-white px-6 py-2 rounded-xl font-black cursor-not-allowed' : 'bg-blue-600 text-white px-6 py-2 rounded-xl font-black shadow-lg shadow-blue-100 hover:scale-105 active:scale-95 transition-all'}
                     >
-                      {quotaUsed ? '次数已用完' : '更换为此社团'}
+                      {quotaUsed ? t('club.quotaUsed') : t('club.replaceWith')}
                     </button>
                   </div>
                 );
@@ -788,8 +791,8 @@ function ClubMatters({ user }) {
             {rotateTargetClubId && myWednesdayClubs.length > 1 && (
               <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setRotateTargetClubId(null)}>
                 <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
-                  <h3 className="font-black text-gray-800 mb-4">选择要替换的社团</h3>
-                  <p className="text-sm text-gray-500 mb-4">将您当前的一个周三社团更换为刚选择的社团</p>
+                  <h3 className="font-black text-gray-800 mb-4">{t('club.replaceWhich')}</h3>
+                  <p className="text-sm text-gray-500 mb-4">{t('club.replaceHint')}</p>
                   <ul className="space-y-2">
                     {myWednesdayClubs.map(m => {
                       const c = m.Club || m.clubID;
@@ -1120,8 +1123,8 @@ function ClubMatters({ user }) {
         <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
           <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="p-8 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="text-3xl font-black text-gray-800">社团详情</h3>
-              <p className="text-gray-400 text-sm mt-2">{selectedClubDetail.name}</p>
+              <h3 className="text-3xl font-black text-gray-800">{t('club.detail')}</h3>
+              <p className="text-gray-400 text-sm mt-2"><TranslatableContent>{selectedClubDetail.name}</TranslatableContent></p>
             </div>
             
             <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
@@ -1152,7 +1155,7 @@ function ClubMatters({ user }) {
                       {selectedClubDetail.intro && (
                         <p className="text-gray-700">
                           <span className="font-medium">介绍：</span>
-                          <span className="whitespace-pre-wrap">{selectedClubDetail.intro}</span>
+                          <span className="whitespace-pre-wrap"><TranslatableContent>{selectedClubDetail.intro}</TranslatableContent></span>
                         </p>
                       )}
                       <p className="text-gray-700">
@@ -1489,7 +1492,7 @@ function ClubMatters({ user }) {
                   </button>
                 )}
               </div>
-              <button onClick={() => setSelectedClubDetail(null)} className="px-8 py-3 bg-gray-800 text-white rounded-2xl font-black hover:bg-black transition-all">关闭详情</button>
+              <button onClick={() => setSelectedClubDetail(null)} className="px-8 py-3 bg-gray-800 text-white rounded-2xl font-black hover:bg-black transition-all">{t('club.closeDetail')}</button>
             </div>
           </div>
         </div>

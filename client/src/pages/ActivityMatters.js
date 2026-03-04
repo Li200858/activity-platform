@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import axios from 'axios';
+import { useLanguage } from '../context/LanguageContext';
+import { TranslatableContent } from '../components/TranslatableContent';
 
 function ActivityMatters({ user }) {
+  const { t, isEn } = useLanguage();
   const [view, setView] = useState('menu'); // menu, organize, register, detail, participants, regForm
   const [activities, setActivities] = useState([]);
   const [selectedActivity, setSelectedActivity] = useState(null);
@@ -492,12 +495,11 @@ function ActivityMatters({ user }) {
 
       {view === 'register' && (
         <div>
-          <h2 className="text-xl font-bold mb-4">正在进行的活动</h2>
-          {/* 搜索活动：输入后弹出列表，点击选择进入报名 */}
+          <h2 className="text-xl font-bold mb-4">{t('activity.ongoing')}</h2>
           <div className="relative mb-6">
             <input
               type="text"
-              placeholder="搜索活动名称，选择后直接进入报名"
+              placeholder={t('activity.searchActivity')}
               value={activitySearchQuery}
               onChange={e => setActivitySearchQuery(e.target.value)}
               onFocus={() => setActivitySearchFocused(true)}
@@ -507,7 +509,7 @@ function ActivityMatters({ user }) {
             {activitySearchQuery.trim() && activitySearchFocused && (() => {
               const q = activitySearchQuery.trim().toLowerCase();
               const list = activities.filter(act => act.name && act.name.toLowerCase().includes(q));
-              if (list.length === 0) return <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-2 text-sm text-gray-500 text-center">无匹配活动</div>;
+              if (list.length === 0) return <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg py-2 text-sm text-gray-500 text-center">{t('activity.noMatch')}</div>;
               return (
                 <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto">
                   {list.map(act => {
@@ -525,7 +527,7 @@ function ActivityMatters({ user }) {
                         disabled={full}
                         className={`w-full text-left px-4 py-3 border-b border-gray-50 last:border-0 transition-colors flex justify-between items-center ${full ? 'opacity-60 cursor-not-allowed bg-gray-50' : 'hover:bg-blue-50'}`}
                       >
-                        <span className="font-bold text-gray-800">{act.name}</span>
+                        <span className="font-bold text-gray-800"><TranslatableContent>{act.name}</TranslatableContent></span>
                         <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded">{act.location}{act.time ? ` · ${act.time}` : ''}</span>
                         {full && <span className="text-xs text-red-600 font-medium">人数已满</span>}
                       </button>

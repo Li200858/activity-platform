@@ -141,6 +141,37 @@ app.put('/api/user/english-name', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 翻译接口（用于语言切换时翻译用户发表内容，如社团名、介绍等）
+const translateCache = new Map();
+const TRANSLATE_CACHE_MAX = 500;
+app.post('/api/translate', async (req, res) => {
+  try {
+    const { text, targetLang = 'en' } = req.body;
+    if (!text || typeof text !== 'string') return res.status(400).json({ error: 'Missing text' });
+    const trimmed = text.trim();
+    if (!trimmed) return res.json({ translatedText: '' });
+    const cacheKey = `${targetLang}:${trimmed}`;
+    if (translateCache.has(cacheKey)) return res.json({ translatedText: translateCache.get(cacheKey) });
+    const langpair = targetLang === 'en' ? 'zh-CN|en' : 'en|zh-CN';
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(trimmed)}&langpair=${langpair}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    if (data.responseStatus !== 200 || !data.responseData) {
+      return res.status(500).json({ error: 'Translation failed' });
+    }
+    const translated = data.responseData.translatedText || trimmed;
+    if (translateCache.size >= TRANSLATE_CACHE_MAX) {
+      const first = translateCache.keys().next().value;
+      if (first) translateCache.delete(first);
+    }
+    translateCache.set(cacheKey, translated);
+    res.json({ translatedText: translated });
+  } catch (e) {
+    console.error('Translate error:', e);
+    res.status(500).json({ error: e.message || 'Translation failed' });
+  }
+});
+
 // 统一搜索：用户姓名/ID、社团名、活动名，以及「该用户创建的社团/活动」
 app.get('/api/search', async (req, res) => {
   try {

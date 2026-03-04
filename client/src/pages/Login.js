@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useLanguage } from '../context/LanguageContext';
 
 function Login({ onLogin, onRegister }) {
-  const [mode, setMode] = useState('login'); // 'login' or 'register'
+  const { t } = useLanguage();
+  const [mode, setMode] = useState('login');
   const [name, setName] = useState('');
   const [userClass, setUserClass] = useState('');
   const [userID, setUserID] = useState('');
@@ -19,11 +21,11 @@ function Login({ onLogin, onRegister }) {
         if (name && userClass && userID) {
           await onLogin(name, userClass, userID);
         } else {
-          setError('请填写完整登录信息（包含ID）');
+          setError(t('login.error'));
         }
       }
     } catch (err) {
-      setError(err.response?.data?.error || '操作失败，请检查输入');
+      setError(err.response?.data?.error || (t('common.fail') + ', ' + (t('login.error') || '')));
     }
   };
 
@@ -35,67 +37,67 @@ function Login({ onLogin, onRegister }) {
             onClick={() => { setMode('login'); setError(''); }}
             className={`flex-1 py-2 rounded-md transition-all ${mode === 'login' ? 'bg-white shadow-sm text-blue-600 font-bold' : 'text-gray-500'}`}
           >
-            登录
+            {t('login.login')}
           </button>
           <button 
             onClick={() => { setMode('register'); setError(''); }}
             className={`flex-1 py-2 rounded-md transition-all ${mode === 'register' ? 'bg-white shadow-sm text-blue-600 font-bold' : 'text-gray-500'}`}
           >
-            注册
+            {t('login.register')}
           </button>
         </div>
 
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">
-          {mode === 'login' ? '欢迎回来' : '创建新账号'}
+          {mode === 'login' ? t('login.welcomeBack') : t('login.createAccount')}
         </h2>
 
         {error && <div className="mb-4 p-3 bg-red-100 text-red-600 rounded-lg text-sm">{error}</div>}
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">姓名</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('login.name')}</label>
             <input 
               type="text" 
               value={name} 
               onChange={(e) => setName(e.target.value)} 
               className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="请输入姓名"
+              placeholder={t('login.namePlaceholder')}
               required
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">班级</label>
+            <label className="block text-sm font-medium text-gray-700 mb-1">{t('login.class')}</label>
             <input 
               type="text" 
               value={userClass} 
               onChange={(e) => setUserClass(e.target.value)} 
               className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none"
-              placeholder="请输入班级"
+              placeholder={t('login.classPlaceholder')}
               required
             />
           </div>
           {mode === 'login' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">唯一 ID</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('login.idLabel')}</label>
               <input 
                 type="text" 
                 value={userID} 
                 onChange={(e) => setUserID(e.target.value)} 
                 className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                placeholder="请输入您的 8 位 ID"
+                placeholder={t('login.idPlaceholder')}
                 required
               />
             </div>
           )}
           
           <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors mt-6">
-            {mode === 'login' ? '立即登录' : '提交注册'}
+            {mode === 'login' ? t('login.submitLogin') : t('login.submitRegister')}
           </button>
         </form>
 
         {mode === 'register' && (
           <p className="mt-4 text-xs text-gray-500 text-center">
-            注册成功后系统将为您分配一个专属 ID，请务必妥善保存。
+            {t('login.registerTip')}
           </p>
         )}
       </div>

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth, api } from './utils/api';
+import { useLanguage } from './context/LanguageContext';
+import { TranslatableContent } from './components/TranslatableContent';
 import ClubMatters from './pages/ClubMatters';
 import ActivityMatters from './pages/ActivityMatters';
 import Feedback from './pages/Feedback';
@@ -15,6 +17,7 @@ const socket = io(SOCKET_URL);
 
 function App() {
   const { user, login, register, logout, copyID, updateEnglishName } = useAuth();
+  const { lang, setLang, t, isEn } = useLanguage();
   const [activeTab, setActiveTab] = useState('社团事宜');
   const [hasNotification, setHasNotification] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -70,9 +73,9 @@ function App() {
     if (val === (user.englishName || '')) return;
     try {
       await updateEnglishName(val);
-      alert('英文名已保存');
+      alert(isEn ? 'English name saved' : '英文名已保存');
     } catch (e) {
-      alert('保存英文名失败，请重试');
+      alert(isEn ? 'Failed to save' : '保存英文名失败，请重试');
     }
   };
 
@@ -91,11 +94,11 @@ function App() {
   const handleSetRole = async (targetUserID, role) => {
     try {
       await api.post('/admin/set-role', { targetUserID, role, operatorID: user.userID });
-      alert('权限设置成功');
+      alert(isEn ? 'Role updated' : '权限设置成功');
       const res = await api.get(`/search?q=${searchQuery}&operatorID=${user.userID}`);
       setSearchResults(res.data);
     } catch (err) {
-      alert(err.response?.data?.error || '设置失败');
+      alert(err.response?.data?.error || (isEn ? 'Failed' : '设置失败'));
     }
   };
 
@@ -111,24 +114,31 @@ function App() {
         <div className="max-w-6xl mx-auto p-4 flex flex-col gap-4">
           <div className="flex justify-between items-center">
             <div className="flex gap-1 sm:gap-2 overflow-x-auto no-scrollbar py-1">
-              <button onClick={() => handleTabChange('社团事宜')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all ${activeTab === '社团事宜' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>社团事宜</button>
-              <button onClick={() => handleTabChange('活动事宜')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all ${activeTab === '活动事宜' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>活动事宜</button>
-              <button onClick={() => handleTabChange('意见反馈')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all ${activeTab === '意见反馈' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>意见反馈</button>
+              <button onClick={() => handleTabChange('社团事宜')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all ${activeTab === '社团事宜' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>{t('app.tabs.club')}</button>
+              <button onClick={() => handleTabChange('活动事宜')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all ${activeTab === '活动事宜' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>{t('app.tabs.activity')}</button>
+              <button onClick={() => handleTabChange('意见反馈')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all ${activeTab === '意见反馈' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>{t('app.tabs.feedback')}</button>
               
               {isAdmin && (
                 <button onClick={() => handleTabChange('反馈收集')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all relative ${activeTab === '反馈收集' ? 'bg-orange-500 text-white shadow-lg shadow-orange-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
-                  反馈收集
+                  {t('app.tabs.feedbackCollection')}
                   {hasNotification && activeTab !== '反馈收集' && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
                 </button>
               )}
             </div>
             
             <div className="flex items-center gap-3 sm:gap-6">
+              <button
+                type="button"
+                onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+              >
+                {lang === 'zh' ? 'English' : '中文'}
+              </button>
               <button 
                 onClick={() => handleTabChange('审核状态')} 
                 className={`text-sm font-bold transition-colors relative flex items-center gap-1 ${activeTab === '审核状态' ? 'text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}
               >
-                <span>审核状态</span>
+                <span>{t('app.tabs.audit')}</span>
                 {hasNotification && activeTab !== '审核状态' && activeTab !== '反馈收集' && (
                   <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
                 )}
@@ -146,7 +156,7 @@ function App() {
                   <input
                     type="text"
                     value={englishDraft}
-                    placeholder="英文名"
+                    placeholder={t('app.englishName')}
                     onChange={e => setEnglishDraft(e.target.value)}
                     className="w-32 sm:w-40 bg-white border border-gray-200 rounded-full px-3 py-1 text-[10px] text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
                   />
@@ -155,7 +165,7 @@ function App() {
                     onClick={handleSaveEnglishName}
                     className="px-2.5 py-1 rounded-full bg-blue-50 text-blue-600 text-[10px] font-bold hover:bg-blue-600 hover:text-white transition-all"
                   >
-                    保存
+                    {t('app.save')}
                   </button>
                 </div>
               </div>
@@ -168,7 +178,7 @@ function App() {
           <form onSubmit={handleSearch} className="relative group">
             <input 
               type="text" 
-              placeholder="快速搜索用户 ID、社团或活动..." 
+              placeholder={t('app.search.placeholder')} 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full bg-gray-100 border-none rounded-2xl px-12 py-3 outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
@@ -176,7 +186,7 @@ function App() {
             <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
-            <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-600 text-white px-5 py-1.5 rounded-xl text-xs font-black shadow-lg shadow-blue-100">搜索</button>
+            <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-600 text-white px-5 py-1.5 rounded-xl text-xs font-black shadow-lg shadow-blue-100">{t('app.search.button')}</button>
           </form>
         </div>
       </header>
@@ -185,14 +195,14 @@ function App() {
         {activeTab === '搜索结果' && searchResults && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
             <div className="flex justify-between items-center">
-              <h2 className="text-3xl font-black text-gray-800">搜索结果: <span className="text-blue-600">"{searchQuery}"</span></h2>
-              <button onClick={() => { setSearchResults(null); setActiveTab('社团事宜'); }} className="text-sm font-bold text-gray-400 hover:text-blue-600 transition-colors">返回主页</button>
+              <h2 className="text-3xl font-black text-gray-800">{t('app.search.resultTitle')}: <span className="text-blue-600">"{searchQuery}"</span></h2>
+              <button onClick={() => { setSearchResults(null); setActiveTab('社团事宜'); }} className="text-sm font-bold text-gray-400 hover:text-blue-600 transition-colors">{t('app.search.backHome')}</button>
             </div>
             
             <section>
-              <h3 className="text-xs font-black text-gray-400 mb-4 uppercase tracking-[0.2em] border-b border-gray-200 pb-2">用户</h3>
+              <h3 className="text-xs font-black text-gray-400 mb-4 uppercase tracking-[0.2em] border-b border-gray-200 pb-2">{t('app.users')}</h3>
               <div className="grid gap-4 sm:grid-cols-2">
-                {searchResults.users.length === 0 && <p className="text-gray-400 italic text-sm">未找到匹配用户</p>}
+                {searchResults.users.length === 0 && <p className="text-gray-400 italic text-sm">{t('app.noUsers')}</p>}
                 {searchResults.users.map((u, idx) => (
                   <div key={idx} className="bg-white p-5 rounded-2xl shadow-sm flex justify-between items-center border border-gray-100 hover:shadow-xl hover:scale-[1.02] transition-all">
                     <div>
@@ -208,7 +218,7 @@ function App() {
                         onClick={() => handleSetRole(u.userID, u.role === 'user' ? 'admin' : 'user')} 
                         className={`text-[10px] px-4 py-2 rounded-xl font-black transition-all ${u.role === 'user' ? 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                       >
-                        {u.role === 'user' ? '设为管理员' : '取消权限'}
+                        {u.role === 'user' ? t('app.setAdmin') : t('app.cancelRole')}
                       </button>
                     )}
                   </div>
@@ -218,25 +228,25 @@ function App() {
 
             <div className="grid md:grid-cols-2 gap-8">
               <section>
-                <h3 className="text-xs font-black text-gray-400 mb-4 uppercase tracking-[0.2em] border-b border-gray-200 pb-2">社团</h3>
+                <h3 className="text-xs font-black text-gray-400 mb-4 uppercase tracking-[0.2em] border-b border-gray-200 pb-2">{t('app.clubs')}</h3>
                 <div className="space-y-3">
-                  {searchResults.clubs.length === 0 && <p className="text-gray-400 italic text-sm">无相关社团</p>}
+                  {searchResults.clubs.length === 0 && <p className="text-gray-400 italic text-sm">{t('app.noClubs')}</p>}
                   {searchResults.clubs.map(c => (
                     <div key={c.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                      <p className="font-black text-gray-800">{c.name}</p>
-                      <p className="text-xs text-gray-500 mt-2 line-clamp-2 leading-relaxed">{c.intro}</p>
+                      <p className="font-black text-gray-800"><TranslatableContent>{c.name}</TranslatableContent></p>
+                      <p className="text-xs text-gray-500 mt-2 line-clamp-2 leading-relaxed"><TranslatableContent>{c.intro || ''}</TranslatableContent></p>
                     </div>
                   ))}
                 </div>
               </section>
 
               <section>
-                <h3 className="text-xs font-black text-gray-400 mb-4 uppercase tracking-[0.2em] border-b border-gray-200 pb-2">活动</h3>
+                <h3 className="text-xs font-black text-gray-400 mb-4 uppercase tracking-[0.2em] border-b border-gray-200 pb-2">{t('app.activities')}</h3>
                 <div className="space-y-3">
-                  {searchResults.activities.length === 0 && <p className="text-gray-400 italic text-sm">无相关活动</p>}
+                  {searchResults.activities.length === 0 && <p className="text-gray-400 italic text-sm">{t('app.noActivities')}</p>}
                   {searchResults.activities.map(a => (
                     <div key={a.id} className="bg-white p-5 rounded-2xl shadow-sm border border-gray-100">
-                      <p className="font-black text-gray-800">{a.name}</p>
+                      <p className="font-black text-gray-800"><TranslatableContent>{a.name}</TranslatableContent></p>
                       <div className="flex gap-2 mt-2">
                         <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-md font-bold">{a.location}</span>
                         <span className="text-[10px] bg-gray-50 text-gray-500 px-2 py-0.5 rounded-md font-bold">{a.time}</span>
