@@ -27,6 +27,8 @@ function ActivityMatters({ user }) {
   const [paymentProof, setPaymentProof] = useState(null);
   const [activitySearchQuery, setActivitySearchQuery] = useState('');
   const [activitySearchFocused, setActivitySearchFocused] = useState(false);
+  const [editingActivity, setEditingActivity] = useState(false);
+  const [editActivityForm, setEditActivityForm] = useState({ name: '', capacity: '', time: '', location: '', description: '', flow: '', requirements: '', hasFee: false, feeAmount: '' });
 
   useEffect(() => {
     fetchActivities();
@@ -160,6 +162,31 @@ function ActivityMatters({ user }) {
       setView('participants');
     } catch (err) {
       alert(err.response?.data?.error || '获取参与者列表失败');
+    }
+  };
+
+  const handleUpdateActivity = async () => {
+    if (!selectedActivity?.id) return;
+    try {
+      const res = await api.put(`/activities/${selectedActivity.id}/update-info`, {
+        userID: user.userID,
+        name: editActivityForm.name,
+        capacity: editActivityForm.capacity === '' ? null : editActivityForm.capacity,
+        time: editActivityForm.time,
+        location: editActivityForm.location,
+        description: editActivityForm.description,
+        flow: editActivityForm.flow,
+        requirements: editActivityForm.requirements,
+        hasFee: editActivityForm.hasFee,
+        feeAmount: editActivityForm.feeAmount
+      });
+      setEditingActivity(false);
+      const updated = res.data?.activity;
+      if (updated) setSelectedActivity({ ...selectedActivity, ...updated, currentRegCount: selectedActivity.currentRegCount });
+      fetchActivities();
+      alert('更新成功');
+    } catch (err) {
+      alert(err.response?.data?.error || '更新失败');
     }
   };
 
@@ -730,20 +757,45 @@ function ActivityMatters({ user }) {
         <div className="grid gap-4">
           <div className="flex justify-between items-center">
             <h2 className="text-xl font-bold">活动详情 - {selectedActivity.name}</h2>
-            <button 
-              onClick={() => setView('menu')} 
-              className="text-gray-500 underline text-sm"
-            >
-              返回
-            </button>
+            <div className="flex items-center gap-2">
+              {(selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && !editingActivity && (
+                <button
+                  onClick={() => {
+                    setEditingActivity(true);
+                    setEditActivityForm({
+                      name: selectedActivity.name || '',
+                      capacity: selectedActivity.capacity != null ? String(selectedActivity.capacity) : '',
+                      time: selectedActivity.time || '',
+                      location: selectedActivity.location || '',
+                      description: selectedActivity.description || '',
+                      flow: selectedActivity.flow || '',
+                      requirements: selectedActivity.requirements || '',
+                      hasFee: selectedActivity.hasFee || false,
+                      feeAmount: selectedActivity.feeAmount || ''
+                    });
+                  }}
+                  className="text-blue-600 text-sm font-bold hover:underline"
+                >
+                  编辑
+                </button>
+              )}
+              <button 
+                onClick={() => setView('menu')} 
+                className="text-gray-500 underline text-sm"
+              >
+                返回
+              </button>
+            </div>
           </div>
           
           <div className="border p-4 rounded bg-white">
             <div className="grid gap-4">
+              {!editingActivity ? (
+                <>
               <div>
                 <h3 className="font-bold text-lg mb-2">{selectedActivity.name}</h3>
                 <p className="text-sm text-gray-600">
-                  <strong>地点：</strong>{selectedActivity.location}
+                  <strong>地点：</strong>{selectedActivity.location || '（未填写）'}
                 </p>
                 {selectedActivity.time && (
                   <p className="text-sm text-gray-600">
@@ -755,9 +807,9 @@ function ActivityMatters({ user }) {
                     <strong>组织者：</strong>{selectedActivity.organizerName}{selectedActivity.organizerEnglishName ? ` / ${selectedActivity.organizerEnglishName}` : ''}{selectedActivity.organizerClass ? ` (${selectedActivity.organizerClass})` : ''}
                   </p>
                 )}
-                {selectedActivity.capacity && (
+                {(selectedActivity.capacity != null || selectedActivity.currentRegCount != null) && (
                   <p className="text-sm text-gray-600">
-                    <strong>人数：</strong>{selectedActivity.currentRegCount || 0} / {selectedActivity.capacity}
+                    <strong>人数：</strong>{selectedActivity.currentRegCount || 0} / {selectedActivity.capacity ?? '（不限制）'}
                   </p>
                 )}
                 {selectedActivity.hasFee && (
@@ -769,23 +821,70 @@ function ActivityMatters({ user }) {
               
               <div className="border-t pt-4">
                 <h4 className="font-bold mb-2">活动简介</h4>
-                <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedActivity.description}</p>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedActivity.description || '（未填写）'}</p>
               </div>
               
-              {selectedActivity.flow && (
-                <div className="border-t pt-4">
-                  <h4 className="font-bold mb-2">活动流程</h4>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedActivity.flow}</p>
+              <div className="border-t pt-4">
+                <h4 className="font-bold mb-2">活动流程</h4>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedActivity.flow || '（未填写）'}</p>
+              </div>
+              
+              <div className="border-t pt-4">
+                <h4 className="font-bold mb-2">活动需求</h4>
+                <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedActivity.requirements || '（未填写）'}</p>
+              </div>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1 block">活动名称</label>
+                    <input value={editActivityForm.name} onChange={e => setEditActivityForm({ ...editActivityForm, name: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" required />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1 block">地点</label>
+                    <input value={editActivityForm.location} onChange={e => setEditActivityForm({ ...editActivityForm, location: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1 block">时间</label>
+                    <input value={editActivityForm.time} onChange={e => setEditActivityForm({ ...editActivityForm, time: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1 block">人数上限（留空表示不限制）</label>
+                    <input type="number" min="0" value={editActivityForm.capacity} onChange={e => setEditActivityForm({ ...editActivityForm, capacity: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1 block">活动简介</label>
+                    <textarea value={editActivityForm.description} onChange={e => setEditActivityForm({ ...editActivityForm, description: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm min-h-[80px]" rows={4} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1 block">活动流程</label>
+                    <textarea value={editActivityForm.flow} onChange={e => setEditActivityForm({ ...editActivityForm, flow: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm min-h-[80px]" rows={4} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-bold text-gray-600 mb-1 block">活动需求</label>
+                    <textarea value={editActivityForm.requirements} onChange={e => setEditActivityForm({ ...editActivityForm, requirements: e.target.value })} className="w-full border rounded-lg px-3 py-2 text-sm min-h-[80px]" rows={4} />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={editActivityForm.hasFee} onChange={e => setEditActivityForm({ ...editActivityForm, hasFee: e.target.checked })} className="rounded" />
+                      <span className="text-sm">收取报名费</span>
+                    </label>
+                  </div>
+                  {editActivityForm.hasFee && (
+                    <div>
+                      <label className="text-xs font-bold text-gray-600 mb-1 block">报名费金额</label>
+                      <input value={editActivityForm.feeAmount} onChange={e => setEditActivityForm({ ...editActivityForm, feeAmount: e.target.value })} placeholder="如：50元" className="w-full border rounded-lg px-3 py-2 text-sm" />
+                    </div>
+                  )}
+                  <div className="flex gap-2 pt-2">
+                    <button onClick={handleUpdateActivity} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">保存</button>
+                    <button onClick={() => setEditingActivity(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-300">取消</button>
+                  </div>
                 </div>
               )}
-              
-              {selectedActivity.requirements && (
-                <div className="border-t pt-4">
-                  <h4 className="font-bold mb-2">活动需求</h4>
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedActivity.requirements}</p>
-                </div>
-              )}
-              
+
+              {!editingActivity && (
+              <>
               {/* 活动阶段显示 */}
               <div className="border-t pt-4">
                 <h4 className="font-bold mb-3">活动进度</h4>
@@ -891,6 +990,8 @@ function ActivityMatters({ user }) {
                   </>
                 )}
               </div>
+              </>
+              )}
             </div>
           </div>
         </div>

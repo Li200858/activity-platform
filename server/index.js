@@ -582,11 +582,11 @@ app.put('/api/clubs/:id/update-category-type', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 更新社团活动信息：活动内容、活动地点、活动时间、活动时长（仅创建者或管理员）
+// 更新社团活动信息：活动内容、活动地点、活动时间、活动时长、人数上限（仅创建者或管理员）
 app.put('/api/clubs/:id/update-info', async (req, res) => {
   try {
     const { id } = req.params;
-    const { userID: operatorID, content, location, time, duration } = req.body;
+    const { userID: operatorID, content, location, time, duration, capacity } = req.body;
     if (!operatorID) return res.status(400).json({ error: '缺少 userID' });
 
     const club = await Club.findById(id);
@@ -602,6 +602,15 @@ app.put('/api/clubs/:id/update-info', async (req, res) => {
     if (location !== undefined) club.location = String(location || '').trim();
     if (time !== undefined) club.time = String(time || '').trim();
     if (duration !== undefined) club.duration = String(duration || '').trim();
+    if (capacity !== undefined) {
+      const val = capacity === '' || capacity == null ? null : Number(capacity);
+      if (val != null && (isNaN(val) || val < 0)) return res.status(400).json({ error: '人数上限必须为非负整数' });
+      if (val != null) {
+        const currentCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
+        if (val < currentCount) return res.status(400).json({ error: `人数上限不能小于当前成员数（${currentCount}人）` });
+      }
+      club.capacity = val;
+    }
 
     await club.save();
 
@@ -981,6 +990,49 @@ app.put('/api/activities/:id/phase', async (req, res) => {
     const actObj = act.toObject();
     actObj.id = act._id.toString();
     res.json(actObj);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 更新活动详情：名称、人数、时间、地点、简介、流程、需求、报名费（仅组织者或管理员）
+app.put('/api/activities/:id/update-info', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID: operatorID, name, capacity, time, location, description, flow, requirements, hasFee, feeAmount } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 userID' });
+
+    const act = await Activity.findById(id);
+    if (!act) return res.status(404).json({ error: '活动不存在' });
+
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+    const isOrganizer = act.organizerID === operatorID;
+    const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
+    if (!isOrganizer && !isAdmin) return res.status(403).json({ error: '仅活动组织者或管理员可修改' });
+
+    if (name !== undefined && String(name || '').trim()) act.name = String(name).trim();
+    if (time !== undefined) act.time = String(time || '').trim();
+    if (location !== undefined) act.location = String(location || '').trim();
+    if (description !== undefined) act.description = String(description || '').trim();
+    if (flow !== undefined) act.flow = String(flow || '').trim();
+    if (requirements !== undefined) act.requirements = String(requirements || '').trim();
+    if (hasFee !== undefined) act.hasFee = hasFee === true || hasFee === 'true';
+    if (feeAmount !== undefined) act.feeAmount = String(feeAmount || '').trim() || null;
+
+    if (capacity !== undefined) {
+      const val = capacity === '' || capacity == null ? null : Number(capacity);
+      if (val != null && (isNaN(val) || val < 0)) return res.status(400).json({ error: '人数上限必须为非负整数' });
+      if (val != null) {
+        const currentCount = await ActivityRegistration.countDocuments({ activityID: act._id, status: 'approved' });
+        if (val < currentCount) return res.status(400).json({ error: `人数上限不能小于当前报名人数（${currentCount}人）` });
+      }
+      act.capacity = val;
+    }
+
+    await act.save();
+
+    const actObj = act.toObject();
+    actObj.id = act._id.toString();
+    res.json({ success: true, activity: actObj });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

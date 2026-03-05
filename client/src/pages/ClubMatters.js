@@ -36,7 +36,7 @@ function ClubMatters({ user }) {
   const [editingCategoryType, setEditingCategoryType] = useState(false);
   const [editCategoryTypeForm, setEditCategoryTypeForm] = useState({ category: '', type: 'activity', blocks: [], intro: '' });
   const [editingInfo, setEditingInfo] = useState(false);
-  const [editInfoForm, setEditInfoForm] = useState({ content: '', location: '', time: '', duration: '' });
+  const [editInfoForm, setEditInfoForm] = useState({ content: '', location: '', time: '', duration: '', capacity: '' });
   const [clubSearchQuery, setClubSearchQuery] = useState(''); // 社团报名/轮换 搜索
   const [clubSearchFocused, setClubSearchFocused] = useState(false);
   const [rotateTargetClubId, setRotateTargetClubId] = useState(null); // 轮换时选择要替换成的社团，再选要替换的
@@ -310,7 +310,8 @@ function ClubMatters({ user }) {
         content: editInfoForm.content,
         location: editInfoForm.location,
         time: editInfoForm.time,
-        duration: editInfoForm.duration
+        duration: editInfoForm.duration,
+        capacity: editInfoForm.capacity === '' ? null : editInfoForm.capacity
       });
       alert('更新成功');
       setEditingInfo(false);
@@ -1350,7 +1351,8 @@ function ClubMatters({ user }) {
                             content: selectedClubDetail.content || '',
                             location: selectedClubDetail.location || '',
                             time: selectedClubDetail.time || '',
-                            duration: selectedClubDetail.duration || ''
+                            duration: selectedClubDetail.duration || '',
+                            capacity: selectedClubDetail.capacity != null ? String(selectedClubDetail.capacity) : ''
                           });
                         }}
                         className="text-blue-600 text-xs font-bold hover:underline"
@@ -1376,6 +1378,10 @@ function ClubMatters({ user }) {
                       <p className="text-gray-700">
                         <span className="font-medium">活动时长：</span>
                         <span><TranslatableContent>{selectedClubDetail.duration || '（未填写）'}</TranslatableContent></span>
+                      </p>
+                      <p className="text-gray-700">
+                        <span className="font-medium">人数上限：</span>
+                        <span>{selectedClubDetail.capacity != null ? selectedClubDetail.capacity + ' 人' : '（不限制）'}</span>
                       </p>
                     </div>
                   ) : (
@@ -1420,6 +1426,17 @@ function ClubMatters({ user }) {
                           className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
                       </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">人数上限（留空表示不限制）</label>
+                        <input
+                          type="number"
+                          min="0"
+                          placeholder="如：30"
+                          value={editInfoForm.capacity}
+                          onChange={e => setEditInfoForm({ ...editInfoForm, capacity: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
                       <div className="flex gap-2 pt-2">
                         <button onClick={handleUpdateInfo} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">保存</button>
                         <button onClick={() => setEditingInfo(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-300">取消</button>
@@ -1437,8 +1454,8 @@ function ClubMatters({ user }) {
                   file: '附件', type: '社团类型', blocks: '活动板块', category: '社团分类'
                 };
                 
-                // 跳过 category、type、blocks、intro（已在顶部编辑区域显示）、content/location/time/duration（已在活动信息区块显示）
-                if (['category', 'type', 'blocks', 'intro', 'content', 'location', 'time', 'duration'].includes(key)) return null;
+                // 跳过 category、type、blocks、intro（已在顶部编辑区域显示）、content/location/time/duration/capacity（已在活动信息区块显示）
+                if (['category', 'type', 'blocks', 'intro', 'content', 'location', 'time', 'duration', 'capacity'].includes(key)) return null;
 
                 if (key === 'type') {
                   return (
