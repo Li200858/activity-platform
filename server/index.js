@@ -8,6 +8,7 @@ const fs = require('fs');
 const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 const XLSX = require('xlsx');
+const { pinyin } = require('pinyin-pro');
 const { 
   mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification, SemesterRotation,
   ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest, ClubVenueSchedule, IDRecoveryRequest
@@ -252,6 +253,7 @@ app.get('/api/search', async (req, res) => {
     clubsByFounder.forEach(c => { clubIds.add(c._id.toString()); });
     const clubs = await Club.find({ _id: { $in: Array.from(clubIds) }, status: 'approved' }).lean();
     const clubsWithId = clubs.map(c => ({ ...c, id: c._id.toString() }));
+    clubsWithId.sort((a, b) => getClubSortKey(a.name).localeCompare(getClubSortKey(b.name)));
     // 活动：按活动名 或 组织者属于匹配用户
     const actsByName = await Activity.find({ name: { $regex: q, $options: 'i' }, status: 'approved' }).lean();
     const actsByOrganizer = matchedUserIDs.length ? await Activity.find({ organizerID: { $in: matchedUserIDs }, status: 'approved' }).lean() : [];
@@ -353,6 +355,23 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 社团名称排序用：中文取拼音首字母串，英文取原串（转小写）
+function getClubSortKey(name) {
+  if (!name || typeof name !== 'string') return '';
+  const trimmed = name.trim();
+  if (!trimmed) return '';
+  const first = trimmed.charAt(0);
+  if (/^[A-Za-z]/.test(first)) {
+    return trimmed.toLowerCase();
+  }
+  try {
+    const initials = pinyin(trimmed, { pattern: 'initial' });
+    return (initials || '').replace(/\s/g, '').toLowerCase();
+  } catch (e) {
+    return trimmed;
+  }
+}
+
 app.get('/api/clubs/approved', async (req, res) => {
   try {
     const clubs = await Club.find({ status: 'approved' });
@@ -413,6 +432,7 @@ app.get('/api/clubs/approved', async (req, res) => {
         coreMembers: plain.coreMembers || []
       };
     }));
+    result.sort((a, b) => getClubSortKey(a.name).localeCompare(getClubSortKey(b.name)));
     res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
