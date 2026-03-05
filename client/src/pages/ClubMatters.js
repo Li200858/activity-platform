@@ -35,6 +35,8 @@ function ClubMatters({ user }) {
   const [rotationQuota, setRotationQuota] = useState(null); // { semester, used, limit }
   const [editingCategoryType, setEditingCategoryType] = useState(false);
   const [editCategoryTypeForm, setEditCategoryTypeForm] = useState({ category: '', type: 'activity', blocks: [], intro: '' });
+  const [editingInfo, setEditingInfo] = useState(false);
+  const [editInfoForm, setEditInfoForm] = useState({ content: '', location: '', time: '', duration: '' });
   const [clubSearchQuery, setClubSearchQuery] = useState(''); // 社团报名/轮换 搜索
   const [clubSearchFocused, setClubSearchFocused] = useState(false);
   const [rotateTargetClubId, setRotateTargetClubId] = useState(null); // 轮换时选择要替换成的社团，再选要替换的
@@ -291,6 +293,27 @@ function ClubMatters({ user }) {
       alert('更新成功');
       setEditingCategoryType(false);
       // 刷新社团列表和详情
+      const res = await api.get('/clubs/approved');
+      setClubs(res.data);
+      const updated = res.data.find(c => c.id === selectedClubDetail.id);
+      if (updated) setSelectedClubDetail(updated);
+    } catch (err) {
+      alert(err.response?.data?.error || '更新失败');
+    }
+  };
+
+  const handleUpdateInfo = async () => {
+    if (!selectedClubDetail?.id) return;
+    try {
+      await api.put(`/clubs/${selectedClubDetail.id}/update-info`, {
+        userID: user.userID,
+        content: editInfoForm.content,
+        location: editInfoForm.location,
+        time: editInfoForm.time,
+        duration: editInfoForm.duration
+      });
+      alert('更新成功');
+      setEditingInfo(false);
       const res = await api.get('/clubs/approved');
       setClubs(res.data);
       const updated = res.data.find(c => c.id === selectedClubDetail.id);
@@ -1248,7 +1271,8 @@ function ClubMatters({ user }) {
                                       }}
                                       className="rounded border-gray-300"
                                     />
-                                    {block === 'block1' ? 'Block1' : block.replace('block', 'Block')}
+                                    <span>{block === 'block1' ? 'Block1' : block.replace('block', 'Block')}</span>
+                                    <span className="text-gray-500 font-mono">{(BLOCK_TIME_LABELS[block] || '').replace('-', '～')}</span>
                                   </label>
                                 );
                               })}
@@ -1314,6 +1338,96 @@ function ClubMatters({ user }) {
                 )}
               </div>
 
+              {/* 活动信息区块（活动内容、活动地点、活动时间、活动时长 - 创建者/管理员可编辑） */}
+              <div className="border-l-4 border-blue-100 pl-4 py-2">
+                <div className="flex justify-between items-center mb-2">
+                  <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">活动信息</label>
+                  {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && !editingInfo && (
+                      <button
+                        onClick={() => {
+                          setEditingInfo(true);
+                          setEditInfoForm({
+                            content: selectedClubDetail.content || '',
+                            location: selectedClubDetail.location || '',
+                            time: selectedClubDetail.time || '',
+                            duration: selectedClubDetail.duration || ''
+                          });
+                        }}
+                        className="text-blue-600 text-xs font-bold hover:underline"
+                      >
+                        {t('common.edit')}
+                      </button>
+                    )}
+                  </div>
+                  {!editingInfo ? (
+                    <div className="mt-2 space-y-2 text-sm">
+                      <p className="text-gray-700">
+                        <span className="font-medium">活动内容：</span>
+                        <span className="whitespace-pre-wrap"><TranslatableContent>{selectedClubDetail.content || '（未填写）'}</TranslatableContent></span>
+                      </p>
+                      <p className="text-gray-700">
+                        <span className="font-medium">活动地点：</span>
+                        <span><TranslatableContent>{selectedClubDetail.location || '（未填写）'}</TranslatableContent></span>
+                      </p>
+                      <p className="text-gray-700">
+                        <span className="font-medium">活动时间：</span>
+                        <span><TranslatableContent>{selectedClubDetail.time || '（未填写）'}</TranslatableContent></span>
+                      </p>
+                      <p className="text-gray-700">
+                        <span className="font-medium">活动时长：</span>
+                        <span><TranslatableContent>{selectedClubDetail.duration || '（未填写）'}</TranslatableContent></span>
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-3 space-y-3">
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">活动内容</label>
+                        <textarea
+                          placeholder="如：制作香氛产品、创立香氛品牌"
+                          value={editInfoForm.content}
+                          onChange={e => setEditInfoForm({ ...editInfoForm, content: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm min-h-[72px] resize-y focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                          rows={3}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">活动地点</label>
+                        <input
+                          type="text"
+                          placeholder="如：待定"
+                          value={editInfoForm.location}
+                          onChange={e => setEditInfoForm({ ...editInfoForm, location: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">活动时间</label>
+                        <input
+                          type="text"
+                          placeholder="如：周五中午"
+                          value={editInfoForm.time}
+                          onChange={e => setEditInfoForm({ ...editInfoForm, time: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">活动时长</label>
+                        <input
+                          type="text"
+                          placeholder="如：50分钟"
+                          value={editInfoForm.duration}
+                          onChange={e => setEditInfoForm({ ...editInfoForm, duration: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button onClick={handleUpdateInfo} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">保存</button>
+                        <button onClick={() => setEditingInfo(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-300">取消</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
               {Object.entries(selectedClubDetail).map(([key, value]) => {
                 if (['id', 'founderID', 'status', 'memberCount', 'createdAt', 'updatedAt', 'coreMembers', 'coreMemberIDs'].includes(key)) return null;
                 
@@ -1323,8 +1437,8 @@ function ClubMatters({ user }) {
                   file: '附件', type: '社团类型', blocks: '活动板块', category: '社团分类'
                 };
                 
-                // 跳过 category、type、blocks、intro（已在顶部编辑区域显示）
-                if (['category', 'type', 'blocks', 'intro'].includes(key)) return null;
+                // 跳过 category、type、blocks、intro（已在顶部编辑区域显示）、content/location/time/duration（已在活动信息区块显示）
+                if (['category', 'type', 'blocks', 'intro', 'content', 'location', 'time', 'duration'].includes(key)) return null;
 
                 if (key === 'type') {
                   return (

@@ -582,6 +582,35 @@ app.put('/api/clubs/:id/update-category-type', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 更新社团活动信息：活动内容、活动地点、活动时间、活动时长（仅创建者或管理员）
+app.put('/api/clubs/:id/update-info', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID: operatorID, content, location, time, duration } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 userID' });
+
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+    const isFounder = club.founderID === operatorID;
+    const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
+    if (!isFounder && !isAdmin) return res.status(403).json({ error: '仅社团创建者或管理员可修改' });
+
+    if (content !== undefined) club.content = String(content || '').trim();
+    if (location !== undefined) club.location = String(location || '').trim();
+    if (time !== undefined) club.time = String(time || '').trim();
+    if (duration !== undefined) club.duration = String(duration || '').trim();
+
+    await club.save();
+
+    const clubObj = club.toObject();
+    clubObj.id = club._id.toString();
+    res.json({ success: true, club: clubObj });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 const WEDNESDAY_BLOCK_LIMIT = 4;
 
 app.post('/api/clubs/register', async (req, res) => {
