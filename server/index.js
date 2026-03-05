@@ -1425,7 +1425,7 @@ app.delete('/api/admin/users/:userID', async (req, res) => {
     const operatorID = req.query.operatorID;
     if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
     const op = await User.findOne({ userID: operatorID });
-    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可删除用户' });
+    if (!op || op.role !== 'super_admin') return res.status(403).json({ error: '仅超级管理员可删除用户' });
     const target = await User.findOne({ userID: targetUserID });
     if (!target) return res.status(404).json({ error: '用户不存在' });
     if (target.role !== 'user') return res.status(403).json({ error: '只能删除普通用户账户，不能删除管理员或超级管理员' });

@@ -99,6 +99,17 @@ function AuditStatus({ user }) {
     }
   };
 
+  const handleDeleteUser = async (targetUserID, targetName) => {
+    if (!window.confirm(`确定删除用户「${targetName}」的账户？此操作不可恢复。`)) return;
+    try {
+      await api.delete(`/admin/users/${targetUserID}?operatorID=${encodeURIComponent(user.userID)}`);
+      alert('账户已删除');
+      handleSearchUser();
+    } catch (err) {
+      alert(err.response?.data?.error || '删除失败');
+    }
+  };
+
   const handleVenueRequestStatus = async (rid, status) => {
     try {
       await api.put(`/clubs/venue-requests/${rid}`, { userID: user.userID, status });
@@ -272,9 +283,12 @@ function AuditStatus({ user }) {
                         {u.role}
                       </span>
                     </div>
-                    <div>
+                    <div className="flex items-center gap-2">
                       {u.role === 'user' && (
-                        <button onClick={() => handleSetRole(u.userID, 'admin')} className="text-xs bg-white border border-red-200 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all">{t('app.setAdmin')}</button>
+                        <>
+                          <button onClick={() => handleSetRole(u.userID, 'admin')} className="text-xs bg-white border border-red-200 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all">{t('app.setAdmin')}</button>
+                          <button onClick={() => handleDeleteUser(u.userID, u.name)} className="text-xs bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg font-bold hover:bg-red-50 hover:text-red-600 transition-all">删除账户</button>
+                        </>
                       )}
                       {u.role === 'admin' && (
                         <button onClick={() => handleSetRole(u.userID, 'user')} className="text-xs bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg font-bold hover:bg-gray-600 hover:text-white transition-all">{t('app.cancelRole')}</button>

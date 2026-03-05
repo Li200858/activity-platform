@@ -234,7 +234,7 @@ function App() {
                         {u.role === 'user' ? t('app.setAdmin') : t('app.cancelRole')}
                       </button>
                     )}
-                    {(user.role === 'admin' || user.role === 'super_admin') && u.role === 'user' && u.userID !== user.userID && (
+                    {user.role === 'super_admin' && u.role === 'user' && u.userID !== user.userID && (
                       <button 
                         onClick={() => handleDeleteUser(u.userID, u.name)} 
                         className="text-[10px] px-4 py-2 rounded-xl font-black bg-gray-100 text-gray-600 hover:bg-red-50 hover:text-red-600 transition-all"
