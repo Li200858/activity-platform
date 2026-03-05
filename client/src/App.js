@@ -144,7 +144,7 @@ function App() {
                 onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
                 className="text-xs font-bold px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
               >
-                {lang === 'zh' ? 'English' : '中文'}
+                {t('app.langSwitch')}
               </button>
               <button 
                 onClick={() => handleTabChange('审核状态')} 

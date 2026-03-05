@@ -67,11 +67,11 @@ function Feedback({ user }) {
       </div>
 
       <div className="space-y-6">
-        <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] px-4">我的反馈历史</h3>
+        <h3 className="text-xs font-black text-gray-400 uppercase tracking-[0.2em] px-4">{t('feedback.myHistory')}</h3>
         <div className="grid gap-4">
           {myFeedbacks.length === 0 && (
             <div className="p-12 text-center text-gray-400 bg-white/50 rounded-3xl border border-dashed border-gray-300 italic">
-              您还没有提交过反馈
+              {t('feedback.noFeedbackYet')}
             </div>
           )}
           {myFeedbacks.map(f => (
@@ -81,7 +81,7 @@ function Feedback({ user }) {
                   {new Date(f.createdAt).toLocaleDateString()}
                 </span>
                 <span className={`text-[10px] px-3 py-1 rounded-full font-black uppercase ${f.status === 'pending' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
-                  {f.status === 'pending' ? '待回复' : '已回复'}
+                  {f.status === 'pending' ? t('feedback.pendingReply') : t('feedback.replied')}
                 </span>
               </div>
               <p className="text-gray-700 leading-relaxed whitespace-pre-wrap mb-4 bg-gray-50 p-4 rounded-2xl">

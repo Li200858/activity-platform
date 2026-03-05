@@ -164,21 +164,22 @@ function ActivityMatters({ user }) {
   };
 
   const phases = ['活动准备', '活动开始', '活动中', '活动结束'];
+  const phaseDisplay = (p) => ({ '活动准备': t('activity.phasePrep'), '活动开始': t('activity.phaseStart'), '活动中': t('activity.phaseInProgress'), '活动结束': t('activity.phaseEnd') }[p] || p);
 
   return (
     <div className="bg-white p-6 rounded shadow">
       {view === 'menu' && (
         <>
           <div className="flex flex-col gap-4 mb-8">
-            <button onClick={() => setView('organize')} className="bg-orange-500 text-white p-4 rounded text-xl">1. 活动组织</button>
-            <button onClick={() => setView('register')} className="bg-blue-500 text-white p-4 rounded text-xl">2. 活动报名</button>
+            <button onClick={() => setView('organize')} className="bg-orange-500 text-white p-4 rounded text-xl">{t('activity.organizeBtn')}</button>
+            <button onClick={() => setView('register')} className="bg-blue-500 text-white p-4 rounded text-xl">{t('activity.registerBtn')}</button>
           </div>
           
           {/* 显示所有活动列表 */}
           <div className="border-t pt-6">
-            <h3 className="text-lg font-bold mb-4">所有活动列表</h3>
+            <h3 className="text-lg font-bold mb-4">{t('activity.allActivitiesList')}</h3>
             {activities.length === 0 ? (
-              <p className="text-center py-10 text-gray-400 italic">暂无活动</p>
+              <p className="text-center py-10 text-gray-400 italic">{t('activity.noActivities')}</p>
             ) : (
               <div className="grid gap-4">
                 {activities.map(act => (
@@ -196,12 +197,12 @@ function ActivityMatters({ user }) {
                         <p className="text-sm text-gray-500">
                           {act.location}{act.time ? ' | ' + act.time : ''}
                           {act.organizerName && (
-                            <span className="ml-2">组织者: {act.organizerName}{act.organizerEnglishName ? ` / ${act.organizerEnglishName}` : ''}{act.organizerClass ? ` (${act.organizerClass})` : ''}</span>
+                            <span className="ml-2">{t('activity.organizer')}: {act.organizerName}{act.organizerEnglishName ? ` / ${act.organizerEnglishName}` : ''}{act.organizerClass ? ` (${act.organizerClass})` : ''}</span>
                           )}
                         </p>
                         {act.capacity && (
                           <p className="text-xs text-gray-500 mt-1">
-                            人数: {act.currentRegCount || 0} / {act.capacity}
+                            {t('common.capacity')}: {act.currentRegCount || 0} / {act.capacity}
                           </p>
                         )}
                         {/* 显示付费信息 */}
@@ -212,7 +213,7 @@ function ActivityMatters({ user }) {
                         )}
                       </div>
                       {act.organizerID === user.userID ? (
-                        <span className="text-xs text-blue-500 font-bold">您是组织者</span>
+                        <span className="text-xs text-blue-500 font-bold">{t('activity.youAreOrganizer')}</span>
                       ) : null}
                     </div>
                     
@@ -235,7 +236,7 @@ function ActivityMatters({ user }) {
                               : 'bg-white border-gray-300'
                             } ${(act.currentPhase || '活动准备') === p ? 'ring-4 ring-blue-100' : ''}`}></div>
                             <span className={`text-[10px] mt-2 font-medium ${(act.currentPhase || '活动准备') === p ? 'text-blue-600 font-bold' : 'text-gray-400'}`}>
-                              {p}
+                              {phaseDisplay(p)}
                             </span>
                           </div>
                         ))}
@@ -245,27 +246,27 @@ function ActivityMatters({ user }) {
                     {/* 显示当前阶段时间信息 */}
                     {act.currentPhase === '活动准备' && act.phaseTimePreparation && (
                       <div className="text-xs text-blue-600 font-medium bg-blue-50 p-2 rounded">
-                        准备时间: {act.phaseTimePreparation}
+                        {t('activity.prepTime')}: {act.phaseTimePreparation}
                       </div>
                     )}
                     {act.currentPhase === '活动开始' && act.phaseTimeStart && (
                       <div className="text-xs text-blue-600 font-medium bg-blue-50 p-2 rounded">
-                        开始时间: {act.phaseTimeStart}
+                        {t('activity.startTime')}: {act.phaseTimeStart}
                       </div>
                     )}
                     {act.currentPhase === '活动中' && act.phaseTimeInProgress && (
                       <div className="text-xs text-blue-600 font-medium bg-blue-50 p-2 rounded">
-                        进行时间: {act.phaseTimeInProgress}
+                        {t('activity.inProgressTime')}: {act.phaseTimeInProgress}
                       </div>
                     )}
                     {act.currentPhase === '活动结束' && act.phaseTimeEnd && (
                       <div className="text-xs text-blue-600 font-medium bg-blue-50 p-2 rounded">
-                        结束时间: {act.phaseTimeEnd}
+                        {t('activity.endTime')}: {act.phaseTimeEnd}
                       </div>
                     )}
                     
                     <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
-                      <strong>简介:</strong> {act.description}
+                      <strong>{t('activity.description')}:</strong> {act.description}
                     </div>
                     <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
                       <button 
@@ -280,7 +281,7 @@ function ActivityMatters({ user }) {
                             : 'bg-blue-500 text-white hover:bg-blue-600'
                         }`}
                       >
-                        {act.capacity && act.currentRegCount >= act.capacity ? '人数已满' : '去报名'}
+                        {act.capacity && act.currentRegCount >= act.capacity ? t('common.full') : t('activity.register')}
                       </button>
                       {/* 参与人员按钮 - 仅组织者和管理员可见 */}
                       {(act.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
@@ -291,7 +292,7 @@ function ActivityMatters({ user }) {
                           }}
                           className="bg-purple-600 text-white text-xs px-4 py-2 rounded font-bold hover:bg-purple-700"
                         >
-                          参与人员
+                          {t('activity.participants')}
                         </button>
                       )}
                       {/* 下载Excel按钮 - 仅组织者和管理员可见 */}
@@ -306,7 +307,7 @@ function ActivityMatters({ user }) {
                           }}
                           className="bg-green-600 text-white text-xs px-4 py-2 rounded font-bold hover:bg-green-700"
                         >
-                          下载参与者Excel
+                          {t('activity.downloadParticipantsExcel')}
                         </button>
                       )}
                       {/* 删除按钮 - 仅组织者和管理员可见 */}
@@ -325,7 +326,7 @@ function ActivityMatters({ user }) {
                           }}
                           className="bg-red-600 text-white text-xs px-4 py-2 rounded font-bold hover:bg-red-700"
                         >
-                          删除活动
+                          {t('activity.deleteActivity')}
                         </button>
                       )}
                     </div>
@@ -558,7 +559,7 @@ function ActivityMatters({ user }) {
                         value={act.currentPhase}
                         onChange={(e) => updatePhase(act.id, e.target.value)}
                       >
-                        {phases.map(p => <option key={p} value={p}>{p}</option>)}
+                        {phases.map(p => <option key={p} value={p}>{phaseDisplay(p)}</option>)}
                       </select>
                     </div>
                   ) : (

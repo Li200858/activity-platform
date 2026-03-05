@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { useLanguage } from '../context/LanguageContext';
 
 function FeedbackCollection({ user }) {
+  const { t } = useLanguage();
   const [feedbacks, setFeedbacks] = useState([]);
   const [replyText, setReplyText] = useState('');
   const [selectedFeedback, setSelectedFeedback] = useState(null);
@@ -39,11 +41,11 @@ function FeedbackCollection({ user }) {
   return (
     <div className="space-y-6">
       <h2 className="text-3xl font-black text-gray-800 flex items-center gap-3">
-        反馈收集箱
+        {t('feedbackCollection.title')}
       </h2>
 
       <div className="grid gap-4">
-        {feedbacks.length === 0 && <div className="p-20 text-center text-gray-400 bg-white rounded-3xl border border-dashed border-gray-200">暂无任何反馈内容</div>}
+        {feedbacks.length === 0 && <div className="p-20 text-center text-gray-400 bg-white rounded-3xl border border-dashed border-gray-200">{t('feedbackCollection.noFeedback')}</div>}
         {feedbacks.map(f => (
           <div key={f.id} className={`bg-white p-6 rounded-3xl shadow-sm border transition-all ${f.status === 'pending' ? 'border-orange-200 ring-4 ring-orange-50' : 'border-gray-100'}`}>
             <div className="flex justify-between items-start mb-4">
@@ -57,7 +59,7 @@ function FeedbackCollection({ user }) {
                 </div>
               </div>
               <span className={`text-[10px] px-3 py-1 rounded-full font-black uppercase ${f.status === 'pending' ? 'bg-orange-100 text-orange-600' : 'bg-green-100 text-green-600'}`}>
-                {f.status === 'pending' ? '待处理' : '已解决'}
+                {f.status === 'pending' ? t('feedbackCollection.pending') : t('feedbackCollection.resolved')}
               </span>
             </div>
 
@@ -68,7 +70,7 @@ function FeedbackCollection({ user }) {
             {f.adminReply && (
               <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 mb-4">
                 <div className="flex items-center gap-2 mb-2 text-blue-600 font-black text-[10px] uppercase tracking-widest">
-                  <span>官方回复</span>
+                  <span>{t('feedbackCollection.officialReply')}</span>
                 </div>
                 <p className="text-blue-800 italic">{f.adminReply}</p>
               </div>
@@ -77,7 +79,7 @@ function FeedbackCollection({ user }) {
             {!f.adminReply && (
               <div className="flex gap-2">
                 <textarea
-                  placeholder="输入回复内容..."
+                  placeholder={t('feedbackCollection.replyPlaceholder')}
                   value={selectedFeedback === f.id ? replyText : ''}
                   onChange={(e) => {
                     setSelectedFeedback(f.id);
@@ -92,7 +94,7 @@ function FeedbackCollection({ user }) {
                   className="bg-blue-600 text-white px-6 py-2 rounded-xl text-xs font-black hover:bg-blue-700 disabled:opacity-50"
                   disabled={selectedFeedback !== f.id || !replyText.trim()}
                 >
-                  发送回复
+                  {t('feedbackCollection.sendReply')}
                 </button>
               </div>
             )}

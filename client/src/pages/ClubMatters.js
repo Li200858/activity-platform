@@ -504,16 +504,16 @@ function ClubMatters({ user }) {
                           <h4 className="font-black text-gray-800 text-lg mb-2"><TranslatableContent>{club.name}</TranslatableContent></h4>
                           <div className="flex items-center gap-3 text-sm text-gray-600 mb-2 flex-wrap">
                             <span>
-                              创建者: {club.founderName || '未知'}
+                              {t('club.creator')}: {club.founderName || (isEn ? 'Unknown' : '未知')}
                               {club.founderEnglishName && ` / ${club.founderEnglishName}`}
                             </span>
                             {club.founderClass && <span>({club.founderClass})</span>}
                             <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold">
-                              {club.memberCount} / {club.capacity} 人
+                              {club.memberCount} / {club.capacity} {t('common.people')}
                             </span>
                             {(club.type || club.blocks?.length) ? (
                               <span className="text-[10px] bg-gray-100 text-gray-600 px-2 py-0.5 rounded font-bold">
-                                {club.type === 'academic' ? '学术' : '活动'}
+                                {club.type === 'academic' ? t('club.academic') : t('club.activityType')}
                                 {club.blocks?.length ? ` · ${club.blocks.map(b => b.replace('block', 'B')).join('、')}` : ''}
                               </span>
                             ) : null}
@@ -528,7 +528,7 @@ function ClubMatters({ user }) {
                           onClick={() => setSelectedClubDetail(club)}
                           className="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition-all"
                         >
-                          查看详情
+                          {t('club.viewDetail')}
                         </button>
                         {/* 参与人员按钮 - 仅创建者和管理员可见 */}
                         {(club.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
@@ -536,7 +536,7 @@ function ClubMatters({ user }) {
                             onClick={() => fetchMembers(club.id)}
                             className="bg-purple-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-purple-700 transition-all"
                           >
-                            参与人员
+                            {t('club.participants')}
                           </button>
                         )}
                         {/* 下载Excel按钮 - 仅创建者和管理员可见 */}
@@ -550,7 +550,7 @@ function ClubMatters({ user }) {
                             }}
                             className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
                           >
-                            下载成员Excel
+                            {t('club.downloadExcel')}
                           </button>
                         )}
                         {/* 解散社团按钮 - 仅创建者可见（管理员不行） */}
@@ -569,7 +569,7 @@ function ClubMatters({ user }) {
                             }}
                             className="bg-red-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-red-700 transition-all"
                           >
-                            解散社团
+                            {t('club.dissolve')}
                           </button>
                         )}
                       </div>
@@ -1132,7 +1132,7 @@ function ClubMatters({ user }) {
               {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                 <div className="border-l-4 border-indigo-100 pl-4 py-2">
                   <div className="flex justify-between items-center mb-2">
-                    <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">社团分类、类型与介绍</label>
+                    <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">{t('club.categoryTypeIntro')}</label>
                     {!editingCategoryType && (
                       <button 
                         onClick={() => {
@@ -1146,7 +1146,7 @@ function ClubMatters({ user }) {
                         }}
                         className="text-indigo-600 text-xs font-bold hover:underline"
                       >
-                        编辑
+                        {t('common.edit')}
                       </button>
                     )}
                   </div>
@@ -1154,24 +1154,24 @@ function ClubMatters({ user }) {
                     <div className="mt-2 space-y-2 text-sm">
                       {selectedClubDetail.intro && (
                         <p className="text-gray-700">
-                          <span className="font-medium">介绍：</span>
+                          <span className="font-medium">{t('club.introLabel')}:</span>
                           <span className="whitespace-pre-wrap"><TranslatableContent>{selectedClubDetail.intro}</TranslatableContent></span>
                         </p>
                       )}
                       <p className="text-gray-700">
-                        <span className="font-medium">分类：</span>
-                        {selectedClubDetail.category === 'daily' ? '日常社团' : 
-                         selectedClubDetail.category === 'both' ? '周三+日常' : '周三社团'}
+                        <span className="font-medium">{t('club.categoryLabel')}:</span>
+                        {selectedClubDetail.category === 'daily' ? t('club.dailyClub') : 
+                         selectedClubDetail.category === 'both' ? t('club.both') : t('club.wednesdayClub')}
                       </p>
                       {(selectedClubDetail.category === 'wednesday' || selectedClubDetail.category === 'both') && (
                         <>
                           <p className="text-gray-700">
-                            <span className="font-medium">类型：</span>
-                            {selectedClubDetail.type === 'academic' ? '学术社团' : '活动社团'}
+                            <span className="font-medium">{t('club.typeLabel')}:</span>
+                            {selectedClubDetail.type === 'academic' ? t('club.academic') : t('club.activityType')}
                           </p>
                           {selectedClubDetail.blocks && selectedClubDetail.blocks.length > 0 && (
                             <div className="text-gray-700">
-                              <span className="font-medium">板块与时间：</span>
+                              <span className="font-medium">{t('club.blocksAndTime')}:</span>
                               <ul className="mt-1 space-y-0.5 text-sm">
                                 {selectedClubDetail.blocks.map(b => (
                                   <li key={b} className="font-mono text-gray-800">
@@ -1266,7 +1266,7 @@ function ClubMatters({ user }) {
               )}
               {/* 核心人员区块 */}
               <div className="border-l-4 border-amber-100 pl-4 py-2">
-                <label className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">核心人员</label>
+                <label className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">{t('club.coreMembers')}</label>
                 <div className="mt-2 space-y-1.5">
                   {(selectedClubDetail.coreMembers || []).length === 0 ? (
                     <p className="text-gray-500 text-sm">暂无</p>
@@ -1288,7 +1288,7 @@ function ClubMatters({ user }) {
                 {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                   <div className="mt-3 pt-3 border-t border-amber-100">
                     <input
-                      placeholder="搜索姓名或ID添加核心人员"
+                      placeholder={t('club.searchCoreMember')}
                       value={coreMemberSearchQuery}
                       onChange={e => setCoreMemberSearchQuery(e.target.value)}
                       onKeyDown={e => e.key === 'Enter' && searchUsersForCore()}
@@ -1388,7 +1388,7 @@ function ClubMatters({ user }) {
                         disabled ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105 active:scale-95'
                       }`}
                     >
-                      {full ? '人数已满' : !canJoin ? '已选或时段冲突' : '立即报名'}
+                      {full ? t('common.full') : !canJoin ? t('club.alreadyOrConflict') : t('club.join')}
                     </button>
                   );
                 })()}
@@ -1412,7 +1412,7 @@ function ClubMatters({ user }) {
                         quotaUsed ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-blue-600 text-white hover:bg-blue-700 hover:scale-105 active:scale-95'
                       }`}
                     >
-                      {quotaUsed ? '轮换次数已用完' : '更换为此社团'}
+                      {quotaUsed ? t('club.quotaExhausted') : t('club.replaceWith')}
                     </button>
                   );
                 })()}
@@ -1425,7 +1425,7 @@ function ClubMatters({ user }) {
                     }}
                     className="px-6 py-3 bg-purple-600 text-white rounded-2xl font-black hover:bg-purple-700 transition-all"
                   >
-                    参与人员
+                    {t('club.participants')}
                   </button>
                 )}
                 {/* 点名记录 - 核心人员/创建者/管理员 */}
@@ -1439,7 +1439,7 @@ function ClubMatters({ user }) {
                     }}
                     className="px-6 py-3 bg-amber-500 text-white rounded-2xl font-black hover:bg-amber-600 transition-all"
                   >
-                    点名记录
+                    {t('club.rollCall')}
                   </button>
                 )}
                 {/* 场地申请与排期 - 创建者/管理员 */}
@@ -1454,7 +1454,7 @@ function ClubMatters({ user }) {
                     }}
                     className="px-6 py-3 bg-teal-600 text-white rounded-2xl font-black hover:bg-teal-700 transition-all"
                   >
-                    场地申请与排期
+                    {t('club.venue')}
                   </button>
                 )}
                 {/* 下载Excel按钮 - 仅创建者和管理员可见 */}
@@ -1468,7 +1468,7 @@ function ClubMatters({ user }) {
                     }}
                     className="px-6 py-3 bg-green-600 text-white rounded-2xl font-black hover:bg-green-700 transition-all"
                   >
-                    下载成员Excel
+                    {t('club.downloadExcel')}
                   </button>
                 )}
                 {/* 解散社团按钮 - 仅创建者可见（管理员不行） */}
@@ -1488,7 +1488,7 @@ function ClubMatters({ user }) {
                     }}
                     className="px-6 py-3 bg-red-600 text-white rounded-2xl font-black hover:bg-red-700 transition-all"
                   >
-                    解散社团
+                    {t('club.dissolve')}
                   </button>
                 )}
               </div>
@@ -1502,18 +1502,18 @@ function ClubMatters({ user }) {
       {view === 'members' && members && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-black text-gray-800">参与人员 - {members.clubName}</h2>
+            <h2 className="text-xl font-black text-gray-800">{t('club.participants')} - {members.clubName}</h2>
             <button 
               onClick={() => setView('menu')} 
               className="text-gray-500 underline text-sm font-bold hover:text-blue-600"
             >
-              返回
+              {t('common.back')}
             </button>
           </div>
           
           {members.members.length === 0 ? (
             <div className="text-center py-10 text-gray-400 italic">
-              <p>暂无成员</p>
+              <p>{t('club.noMembers')}</p>
             </div>
           ) : (
             <div className="border rounded-lg overflow-hidden">
