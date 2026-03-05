@@ -113,7 +113,7 @@ function ClubMatters({ user }) {
     }
   };
 
-  const BLOCK_TIME_LABELS = { block1: '13:40-14:30', block2: '14:30-15:10', block3: '15:10-15:50', block4: '15:50-16:30' };
+  const BLOCK_TIME_LABELS = { block1: '13:40-14:30', block2: '14:30-15:00', block3: '15:10-15:50', block4: '15:50-16:30' };
   const wednesdayTimeFromBlocks = (blocks) => {
     const order = ['block1', 'block2', 'block3', 'block4'];
     const range = BLOCK_TIME_LABELS;
@@ -944,6 +944,7 @@ function ClubMatters({ user }) {
                       <div className="flex flex-col text-[10px] font-mono text-gray-500 border-r border-gray-100 bg-gray-50/50 shrink-0">
                         <div className="h-11 flex items-end pb-1 pr-2">13:40</div>
                         <div className="h-11 flex items-end pb-1 pr-2">14:30</div>
+                        <div className="h-11 flex items-end pb-1 pr-2">15:00</div>
                         <div className="h-11 flex items-end pb-1 pr-2">15:10</div>
                         <div className="h-11 flex items-end pb-1 pr-2">15:50</div>
                         <div className="h-3 flex items-end pb-1 pr-2">16:30</div>
@@ -951,7 +952,7 @@ function ClubMatters({ user }) {
                       <div className="flex-1 flex flex-col min-w-0">
                         {[
                           { id: 'block1', start: '13:40', end: '14:30', label: 'Block1', sub: '学术 50min' },
-                          { id: 'block2', start: '14:30', end: '15:10', label: 'Block2', sub: '40min' },
+                          { id: 'block2', start: '14:30', end: '15:00', label: 'Block2', sub: '30min' },
                           { id: 'block3', start: '15:10', end: '15:50', label: 'Block3', sub: '40min' },
                           { id: 'block4', start: '15:50', end: '16:30', label: 'Block4', sub: '40min' }
                         ].map(({ id, start, end, label, sub }) => {
