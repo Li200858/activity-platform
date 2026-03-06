@@ -23,7 +23,7 @@ function ClubMatters({ user }) {
   const [newAttendanceDate, setNewAttendanceDate] = useState('');
   const [newAttendanceNote, setNewAttendanceNote] = useState('');
   const [formData, setFormData] = useState({
-    name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '',
+    name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', contact: '',
     type: 'activity', blocks: [], category: 'wednesday', dailyTime: '' // dailyTime 仅周三+日常使用
   });
   const [file, setFile] = useState(null);
@@ -36,7 +36,7 @@ function ClubMatters({ user }) {
   const [editingCategoryType, setEditingCategoryType] = useState(false);
   const [editCategoryTypeForm, setEditCategoryTypeForm] = useState({ category: '', type: 'activity', blocks: [], intro: '' });
   const [editingInfo, setEditingInfo] = useState(false);
-  const [editInfoForm, setEditInfoForm] = useState({ content: '', location: '', time: '', duration: '', capacity: '' });
+  const [editInfoForm, setEditInfoForm] = useState({ content: '', location: '', time: '', duration: '', capacity: '', contact: '' });
   const [clubSearchQuery, setClubSearchQuery] = useState(''); // 社团报名/轮换 搜索
   const [clubSearchFocused, setClubSearchFocused] = useState(false);
   const [rotateTargetClubId, setRotateTargetClubId] = useState(null); // 轮换时选择要替换成的社团，再选要替换的
@@ -163,7 +163,7 @@ function ClubMatters({ user }) {
       alert('社团申请已提交，请等待管理员审核');
       setView('menu');
       // 重置表单
-      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', type: 'activity', blocks: [], category: 'wednesday', dailyTime: '' });
+      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', contact: '', type: 'activity', blocks: [], category: 'wednesday', dailyTime: '' });
       setFile(null);
       setNameStatus(null);
       setNameError('');
@@ -311,7 +311,8 @@ function ClubMatters({ user }) {
         location: editInfoForm.location,
         time: editInfoForm.time,
         duration: editInfoForm.duration,
-        capacity: editInfoForm.capacity === '' ? null : editInfoForm.capacity
+        capacity: editInfoForm.capacity === '' ? null : editInfoForm.capacity,
+        contact: editInfoForm.contact
       });
       alert('更新成功');
       setEditingInfo(false);
@@ -905,6 +906,7 @@ function ClubMatters({ user }) {
                   </div>
                   <textarea placeholder="一句话介绍社团..." className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all h-24" required onChange={e => setFormData({...formData, intro: e.target.value})} />
                   <textarea placeholder="主要活动内容..." className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all h-24" required onChange={e => setFormData({...formData, content: e.target.value})} />
+                  <input placeholder="联系方式（如微信号、手机号等，便于线下联系）" value={formData.contact} className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all" required onChange={e => setFormData({...formData, contact: e.target.value})} />
                 </div>
               </div>
               
@@ -1353,7 +1355,8 @@ function ClubMatters({ user }) {
                             location: selectedClubDetail.location || '',
                             time: selectedClubDetail.time || '',
                             duration: selectedClubDetail.duration || '',
-                            capacity: selectedClubDetail.capacity != null ? String(selectedClubDetail.capacity) : ''
+                            capacity: selectedClubDetail.capacity != null ? String(selectedClubDetail.capacity) : '',
+                            contact: selectedClubDetail.contact || ''
                           });
                         }}
                         className="text-blue-600 text-xs font-bold hover:underline"
@@ -1383,6 +1386,10 @@ function ClubMatters({ user }) {
                       <p className="text-gray-700">
                         <span className="font-medium">人数上限：</span>
                         <span>{selectedClubDetail.capacity != null ? selectedClubDetail.capacity + ' 人' : '（不限制）'}</span>
+                      </p>
+                      <p className="text-gray-700">
+                        <span className="font-medium">联系方式：</span>
+                        <span><TranslatableContent>{selectedClubDetail.contact || '（未填写）'}</TranslatableContent></span>
                       </p>
                     </div>
                   ) : (
@@ -1438,6 +1445,16 @@ function ClubMatters({ user }) {
                           className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
                       </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">联系方式</label>
+                        <input
+                          type="text"
+                          placeholder="如：微信号、手机号等，便于线下联系"
+                          value={editInfoForm.contact}
+                          onChange={e => setEditInfoForm({ ...editInfoForm, contact: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
                       <div className="flex gap-2 pt-2">
                         <button onClick={handleUpdateInfo} className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-bold hover:bg-blue-700">保存</button>
                         <button onClick={() => setEditingInfo(false)} className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg text-sm font-bold hover:bg-gray-300">取消</button>
@@ -1455,8 +1472,8 @@ function ClubMatters({ user }) {
                   file: '附件', type: '社团类型', blocks: '活动板块', category: '社团分类'
                 };
                 
-                // 跳过 category、type、blocks、intro（已在顶部编辑区域显示）、content/location/time/duration/capacity（已在活动信息区块显示）
-                if (['category', 'type', 'blocks', 'intro', 'content', 'location', 'time', 'duration', 'capacity'].includes(key)) return null;
+                // 跳过 category、type、blocks、intro（已在顶部编辑区域显示）、content/location/time/duration/capacity/contact（已在活动信息区块显示）
+                if (['category', 'type', 'blocks', 'intro', 'content', 'location', 'time', 'duration', 'capacity', 'contact'].includes(key)) return null;
 
                 if (key === 'type') {
                   return (

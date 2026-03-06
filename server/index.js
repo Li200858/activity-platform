@@ -339,8 +339,11 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
     }
     
     const founderID = req.body.founderID || '';
+    const contact = String(req.body.contact || '').trim();
+    if (!contact) return res.status(400).json({ error: '请填写联系方式，便于线下联系' });
     const club = await Club.create({
       ...req.body,
+      contact,
       category,
       type,
       blocks,
@@ -422,6 +425,7 @@ app.get('/api/clubs/approved', async (req, res) => {
         duration: plain.duration || '',
         weeks: plain.weeks || null,
         capacity: plain.capacity || null,
+        contact: plain.contact || '',
         file: plain.file || null,
         founderID: plain.founderID || '',
         status: plain.status || 'pending',
@@ -606,7 +610,7 @@ app.put('/api/clubs/:id/update-category-type', async (req, res) => {
 app.put('/api/clubs/:id/update-info', async (req, res) => {
   try {
     const { id } = req.params;
-    const { userID: operatorID, content, location, time, duration, capacity } = req.body;
+    const { userID: operatorID, content, location, time, duration, capacity, contact } = req.body;
     if (!operatorID) return res.status(400).json({ error: '缺少 userID' });
 
     const club = await Club.findById(id);
@@ -619,6 +623,7 @@ app.put('/api/clubs/:id/update-info', async (req, res) => {
     if (!isFounder && !isAdmin) return res.status(403).json({ error: '仅社团创建者或管理员可修改' });
 
     if (content !== undefined) club.content = String(content || '').trim();
+    if (contact !== undefined) club.contact = String(contact || '').trim();
     if (location !== undefined) club.location = String(location || '').trim();
     if (time !== undefined) club.time = String(time || '').trim();
     if (duration !== undefined) club.duration = String(duration || '').trim();
@@ -1211,7 +1216,7 @@ app.get('/api/audit/status/:userID', async (req, res) => {
       Activity.find({ organizerID: userID }).select('_id').lean(), // 只需要ID
       Club.find({ founderID: userID }).select('_id').lean(), // 只需要ID
       // 管理员数据：只查询必要字段
-      isAdmin ? Club.find({ status: 'pending' }).select('name status founderID createdAt type blocks intro content location time duration weeks capacity file').lean() : Promise.resolve([]),
+      isAdmin ? Club.find({ status: 'pending' }).select('name status founderID createdAt type blocks intro content location time duration weeks capacity contact file').lean() : Promise.resolve([]),
       isAdmin ? Activity.find({ status: 'pending' }).select('name status organizerID createdAt').lean() : Promise.resolve([]),
       isAdmin ? ActivityRegistration.find({ status: 'pending' }).select('name class userID status activityID createdAt').lean() : Promise.resolve([])
     ]);

@@ -37,6 +37,7 @@ const ClubSchema = new mongoose.Schema({
   duration: { type: String },
   weeks: { type: Number },
   capacity: { type: Number },
+  contact: { type: String }, // 联系方式，用于线下联系
   file: { type: String },
   founderID: { type: String },
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
