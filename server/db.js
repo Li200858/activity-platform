@@ -40,6 +40,7 @@ const ClubSchema = new mongoose.Schema({
   contact: { type: String }, // 联系方式，用于线下联系
   file: { type: String },
   founderID: { type: String },
+  actualLeaderName: { type: String }, // 实际负责人（代老师创建时填写，如「张老师」）
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
   // 社团分类：日常 | 周三 | both（既是周三也有日常，占周三名额且出现在两个列表）
   category: { type: String, enum: ['daily', 'wednesday', 'both'], default: 'wednesday' },

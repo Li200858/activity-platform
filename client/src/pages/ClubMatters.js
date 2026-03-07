@@ -24,6 +24,7 @@ function ClubMatters({ user }) {
   const [newAttendanceNote, setNewAttendanceNote] = useState('');
   const [formData, setFormData] = useState({
     name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', contact: '',
+    actualLeaderName: '', // 实际负责人（代老师创建时填写）
     type: 'activity', blocks: [], category: 'wednesday', dailyTime: '' // dailyTime 仅周三+日常使用
   });
   const [file, setFile] = useState(null);
@@ -36,7 +37,7 @@ function ClubMatters({ user }) {
   const [editingCategoryType, setEditingCategoryType] = useState(false);
   const [editCategoryTypeForm, setEditCategoryTypeForm] = useState({ category: '', type: 'activity', blocks: [], intro: '' });
   const [editingInfo, setEditingInfo] = useState(false);
-  const [editInfoForm, setEditInfoForm] = useState({ content: '', location: '', time: '', duration: '', capacity: '', contact: '' });
+  const [editInfoForm, setEditInfoForm] = useState({ content: '', location: '', time: '', duration: '', capacity: '', contact: '', actualLeaderName: '' });
   const [clubSearchQuery, setClubSearchQuery] = useState(''); // 社团报名/轮换 搜索
   const [clubSearchFocused, setClubSearchFocused] = useState(false);
   const [rotateTargetClubId, setRotateTargetClubId] = useState(null); // 轮换时选择要替换成的社团，再选要替换的
@@ -158,12 +159,13 @@ function ClubMatters({ user }) {
       Object.keys(payload).filter(k => k !== 'blocks').forEach(key => data.append(key, payload[key]));
       data.append('blocks', needsBlocks ? JSON.stringify(formData.blocks) : '[]');
       data.append('founderID', user.userID);
+      if (formData.actualLeaderName?.trim()) data.append('actualLeaderName', formData.actualLeaderName.trim());
       if (file) data.append('file', file);
       await api.post('/clubs', data);
       alert('社团申请已提交，请等待管理员审核');
       setView('menu');
       // 重置表单
-      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', contact: '', type: 'activity', blocks: [], category: 'wednesday', dailyTime: '' });
+      setFormData({ name: '', intro: '', content: '', location: '', time: '', duration: '', weeks: '', capacity: '', contact: '', actualLeaderName: '', type: 'activity', blocks: [], category: 'wednesday', dailyTime: '' });
       setFile(null);
       setNameStatus(null);
       setNameError('');
@@ -312,7 +314,8 @@ function ClubMatters({ user }) {
         time: editInfoForm.time,
         duration: editInfoForm.duration,
         capacity: editInfoForm.capacity === '' ? null : editInfoForm.capacity,
-        contact: editInfoForm.contact
+        contact: editInfoForm.contact,
+        actualLeaderName: editInfoForm.actualLeaderName
       });
       alert('更新成功');
       setEditingInfo(false);
@@ -529,10 +532,13 @@ function ClubMatters({ user }) {
                           <h4 className="font-black text-gray-800 text-lg mb-2"><TranslatableContent>{club.name}</TranslatableContent></h4>
                           <div className="flex items-center gap-3 text-sm text-gray-600 mb-2 flex-wrap">
                             <span>
-                              {t('club.creator')}: {club.founderName || (isEn ? 'Unknown' : '未知')}
-                              {club.founderEnglishName && ` / ${club.founderEnglishName}`}
+                              {club.actualLeaderName ? (
+                                <>{t('club.actualLeader')}: {club.actualLeaderName} <span className="text-gray-400 text-xs">（{t('club.proxyCreated')}: {club.founderName || (isEn ? 'Unknown' : '未知')}）</span></>
+                              ) : (
+                                <>{t('club.creator')}: {club.founderName || (isEn ? 'Unknown' : '未知')}{club.founderEnglishName && ` / ${club.founderEnglishName}`}</>
+                              )}
                             </span>
-                            {club.founderClass && <span>({club.founderClass})</span>}
+                            {!club.actualLeaderName && club.founderClass && <span>({club.founderClass})</span>}
                             <span className="text-[10px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded font-bold">
                               {club.memberCount} / {club.capacity} {t('common.people')}
                             </span>
@@ -907,6 +913,7 @@ function ClubMatters({ user }) {
                   <textarea placeholder="一句话介绍社团..." className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all h-24" required onChange={e => setFormData({...formData, intro: e.target.value})} />
                   <textarea placeholder="主要活动内容..." className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all h-24" required onChange={e => setFormData({...formData, content: e.target.value})} />
                   <input placeholder="联系方式（如微信号、手机号等，便于线下联系）" value={formData.contact} className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all" required onChange={e => setFormData({...formData, contact: e.target.value})} />
+                  <input placeholder="实际负责人（若为代老师创建，请填写老师姓名，如：张老师）" value={formData.actualLeaderName} className="bg-gray-50 border-none rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-purple-500 transition-all" onChange={e => setFormData({...formData, actualLeaderName: e.target.value})} />
                 </div>
               </div>
               
@@ -1152,6 +1159,13 @@ function ClubMatters({ user }) {
             <div className="p-8 border-b border-gray-100 bg-gray-50/50">
               <h3 className="text-3xl font-black text-gray-800">{t('club.detail')}</h3>
               <p className="text-gray-400 text-sm mt-2"><TranslatableContent>{selectedClubDetail.name}</TranslatableContent></p>
+              <p className="text-gray-600 text-sm mt-1">
+                {selectedClubDetail.actualLeaderName ? (
+                  <>{t('club.actualLeader')}：{selectedClubDetail.actualLeaderName} <span className="text-gray-400">（{t('club.proxyCreated')}：{selectedClubDetail.founderName || '—'}）</span></>
+                ) : (
+                  <>{t('club.creator')}：{selectedClubDetail.founderName || (isEn ? 'Unknown' : '未知')}{selectedClubDetail.founderEnglishName && ` / ${selectedClubDetail.founderEnglishName}`}</>
+                )}
+              </p>
             </div>
             
             <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
@@ -1356,7 +1370,8 @@ function ClubMatters({ user }) {
                             time: selectedClubDetail.time || '',
                             duration: selectedClubDetail.duration || '',
                             capacity: selectedClubDetail.capacity != null ? String(selectedClubDetail.capacity) : '',
-                            contact: selectedClubDetail.contact || ''
+                            contact: selectedClubDetail.contact || '',
+                            actualLeaderName: selectedClubDetail.actualLeaderName || ''
                           });
                         }}
                         className="text-blue-600 text-xs font-bold hover:underline"
@@ -1452,6 +1467,16 @@ function ClubMatters({ user }) {
                           placeholder="如：微信号、手机号等，便于线下联系"
                           value={editInfoForm.contact}
                           onChange={e => setEditInfoForm({ ...editInfoForm, contact: e.target.value })}
+                          className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">实际负责人（代老师创建时填写，留空表示创建者即负责人）</label>
+                        <input
+                          type="text"
+                          placeholder="如：张老师"
+                          value={editInfoForm.actualLeaderName}
+                          onChange={e => setEditInfoForm({ ...editInfoForm, actualLeaderName: e.target.value })}
                           className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                         />
                       </div>
