@@ -1476,10 +1476,13 @@ app.post('/api/notifications/read', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 管理员搜索用户（用于权限分配）
+// 管理员搜索用户（用于权限分配，仅 super_admin）
 app.get('/api/admin/users/search', async (req, res) => {
   try {
-    const { query } = req.query;
+    const { query, operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || op.role !== 'super_admin') return res.status(403).json({ error: '仅超级管理员可搜索用户' });
     if (!query || query.trim() === '') {
       return res.json([]);
     }
@@ -1491,13 +1494,14 @@ app.get('/api/admin/users/search', async (req, res) => {
         { userID: { $regex: query.trim(), $options: 'i' } }
       ]
     })
-    .select('name class role userID')
+    .select('name englishName class role userID')
     .lean()
     .limit(50); // 限制返回50条，避免数据过多
     
     // 格式化返回数据
     const formattedUsers = users.map(u => ({
       name: u.name,
+      englishName: u.englishName || '',
       class: u.class,
       role: u.role,
       userID: u.userID
@@ -1512,11 +1516,14 @@ app.get('/api/admin/users/search', async (req, res) => {
 
 app.post('/api/admin/set-role', async (req, res) => {
   try {
-    const op = await User.findOne({ userID: req.body.operatorID });
+    const { operatorID, targetUserID, role } = req.body;
+    if (!operatorID || !targetUserID || !role) return res.status(400).json({ error: '缺少参数' });
+    const op = await User.findOne({ userID: operatorID });
     if (!op || op.role !== 'super_admin') return res.status(403).json({ error: '权限不足' });
-    const target = await User.findOne({ userID: req.body.targetUserID });
+    const target = await User.findOne({ userID: targetUserID });
     if (!target) return res.status(404).json({ error: '用户不存在' });
-    target.role = req.body.role; 
+    if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: '角色只能是 user 或 admin' });
+    target.role = role;
     await target.save();
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }

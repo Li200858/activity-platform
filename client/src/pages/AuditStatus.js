@@ -79,7 +79,7 @@ function AuditStatus({ user }) {
       return;
     }
     try {
-      const res = await api.get(`/admin/users/search?query=${encodeURIComponent(searchQuery.trim())}`);
+      const res = await api.get(`/admin/users/search?query=${encodeURIComponent(searchQuery.trim())}&operatorID=${encodeURIComponent(user.userID)}`);
       setSearchResults(res.data || []);
     } catch (e) {
       console.error("搜索用户失败:", e);
