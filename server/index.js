@@ -127,11 +127,12 @@ app.post('/api/user/login', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 更新用户英文名（登录后在前端右上角填写）
+// 更新用户英文名（登录后在前端右上角填写，仅能修改自己的）
 app.put('/api/user/english-name', async (req, res) => {
   try {
-    const { userID, englishName } = req.body;
+    const { userID, englishName, operatorID } = req.body;
     if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能修改自己的英文名' });
     const user = await User.findOne({ userID });
     if (!user) return res.status(404).json({ error: '用户不存在' });
     user.englishName = (englishName || '').trim();
@@ -449,6 +450,11 @@ const clubHasWednesday = (c) => (c || 'wednesday') === 'wednesday' || (c === 'bo
 app.get('/api/clubs/my/:userID', async (req, res) => {
   try {
     const userID = req.params.userID;
+    const operatorID = req.query.operatorID;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op) return res.status(401).json({ error: '用户不存在' });
+    if (operatorID !== userID && op.role !== 'admin' && op.role !== 'super_admin') return res.status(403).json({ error: '只能查看自己的社团' });
     const members = await ClubMember.find({ userID, status: { $ne: 'rejected' } }).populate('clubID');
     const wednesdayList = members.filter(m => m.clubID && clubHasWednesday(m.clubID.category));
     const daily = members.filter(m => m.clubID && m.clubID.category === 'daily');
@@ -1220,6 +1226,11 @@ app.get('/api/activities/:id/participants', async (req, res) => {
 app.get('/api/audit/status/:userID', async (req, res) => {
   try {
     const { userID } = req.params;
+    const operatorID = req.query.operatorID;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op) return res.status(401).json({ error: '用户不存在' });
+    if (operatorID !== userID && op.role !== 'admin' && op.role !== 'super_admin') return res.status(403).json({ error: '只能查看自己的审核状态' });
     const user = await User.findOne({ userID }).select('role userID'); // 只查询必要字段
     if (!user) return res.status(404).json({ error: '用户不存在' });
     
@@ -1328,7 +1339,10 @@ app.get('/api/audit/status/:userID', async (req, res) => {
 
 app.post('/api/audit/approve', async (req, res) => {
   try {
-    const { type, id, status } = req.body;
+    const { type, id, status, operatorID } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可审核' });
     let targetUserID = '';
     if (type === 'club') { 
       const item = await Club.findById(id); 
@@ -1407,14 +1421,24 @@ app.post('/api/feedback', async (req, res) => {
 });
 
 app.get('/api/feedback/my/:userID', async (req, res) => {
-  try { 
-    const feedbacks = await Feedback.find({ authorID: req.params.userID }).sort({ createdAt: -1 });
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const targetUserID = req.params.userID;
+    const op = await User.findOne({ userID: operatorID });
+    if (!op) return res.status(401).json({ error: '用户不存在' });
+    if (operatorID !== targetUserID && op.role !== 'admin' && op.role !== 'super_admin') return res.status(403).json({ error: '只能查看自己的反馈' });
+    const feedbacks = await Feedback.find({ authorID: targetUserID }).sort({ createdAt: -1 });
     res.json(feedbacks.map(f => ({ ...f.toObject(), id: f._id.toString() })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.get('/api/admin/feedback', async (req, res) => {
-  try { 
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可查看' });
     const feedbacks = await Feedback.find().sort({ createdAt: -1 });
     res.json(feedbacks.map(f => ({ ...f.toObject(), id: f._id.toString() })));
   } catch (e) { res.status(500).json({ error: e.message }); }
@@ -1422,6 +1446,10 @@ app.get('/api/admin/feedback', async (req, res) => {
 
 app.post('/api/admin/feedback/reply', async (req, res) => {
   try {
+    const { operatorID } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可回复' });
     const fb = await Feedback.findById(req.body.feedbackID);
     if (!fb) return res.status(404).json({ error: '反馈不存在' });
     fb.adminReply = req.body.reply; 
@@ -1470,9 +1498,12 @@ app.get('/api/notifications/:userID', async (req, res) => {
 });
 
 app.post('/api/notifications/read', async (req, res) => {
-  try { 
-    await Notification.updateMany({ userID: req.body.userID }, { isRead: true }); 
-    res.json({ success: true }); 
+  try {
+    const { userID, operatorID } = req.body;
+    if (!userID || !operatorID) return res.status(400).json({ error: '缺少 userID 或 operatorID' });
+    if (operatorID !== userID) return res.status(403).json({ error: '只能标记自己的通知为已读' });
+    await Notification.updateMany({ userID }, { isRead: true });
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -1554,7 +1585,11 @@ app.delete('/api/admin/users/:userID', async (req, res) => {
 });
 
 app.get('/api/clubs/document', async (req, res) => {
-  try { 
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可查看' });
     const clubs = await Club.find({ status: 'approved' });
     const result = await Promise.all(clubs.map(async (club) => {
       const members = await ClubMember.find({ 

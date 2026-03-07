@@ -14,7 +14,7 @@ function Feedback({ user }) {
 
   const fetchMyFeedbacks = async () => {
     try {
-      const res = await api.get(`/feedback/my/${user.userID}`);
+      const res = await api.get(`/feedback/my/${user.userID}?operatorID=${encodeURIComponent(user.userID)}`);
       setMyFeedbacks(res.data);
     } catch (e) {
       console.error("加载我的反馈失败", e);

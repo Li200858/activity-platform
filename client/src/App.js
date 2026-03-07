@@ -63,7 +63,7 @@ function App() {
     setSearchResults(null);
     if (tab === '审核状态' || tab === '反馈收集') {
       setHasNotification(false);
-      axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/notifications/read`, { userID: user.userID });
+      axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/notifications/read`, { userID: user.userID, operatorID: user.userID });
     }
   };
 

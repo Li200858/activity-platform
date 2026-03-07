@@ -9,12 +9,13 @@ function FeedbackCollection({ user }) {
   const [selectedFeedback, setSelectedFeedback] = useState(null);
 
   useEffect(() => {
-    fetchFeedbacks();
-  }, []);
+    if (user?.userID) fetchFeedbacks();
+  }, [user?.userID]);
 
   const fetchFeedbacks = async () => {
+    if (!user?.userID) return;
     try {
-      const res = await api.get('/admin/feedback');
+      const res = await api.get(`/admin/feedback?operatorID=${encodeURIComponent(user.userID)}`);
       setFeedbacks(res.data);
     } catch (e) {
       console.error("加载反馈失败", e);

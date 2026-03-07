@@ -66,7 +66,7 @@ function ClubMatters({ user }) {
 
   const fetchMyClub = async () => {
     try {
-      const res = await api.get(`/clubs/my/${user.userID}`);
+      const res = await api.get(`/clubs/my/${user.userID}?operatorID=${encodeURIComponent(user.userID)}`);
       const wedList = res.data?.wednesdayClubs ?? (res.data?.wednesday ? [res.data.wednesday] : []);
       setMyWednesdayClubs(wedList);
       setMyClub(res.data?.wednesday ?? wedList[0] ?? null);

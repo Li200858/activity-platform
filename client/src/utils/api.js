@@ -41,7 +41,7 @@ export const useAuth = () => {
 
   const updateEnglishName = async (englishName) => {
     if (!user || !user.userID) return;
-    const res = await axios.put(`${API_BASE}/user/english-name`, { userID: user.userID, englishName });
+    const res = await axios.put(`${API_BASE}/user/english-name`, { userID: user.userID, englishName, operatorID: user.userID });
     const userData = res.data;
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));

@@ -49,7 +49,7 @@ function AuditStatus({ user }) {
     setLoading(true);
     setError(null);
     try {
-      const res = await api.get(`/audit/status/${user.userID}`);
+      const res = await api.get(`/audit/status/${user.userID}?operatorID=${encodeURIComponent(user.userID)}`);
       setData(res.data);
       setError(null);
     } catch (e) {
@@ -64,7 +64,7 @@ function AuditStatus({ user }) {
 
   const handleApprove = async (type, id, status) => {
     try {
-      await api.post('/audit/approve', { type, id, status });
+      await api.post('/audit/approve', { type, id, status, operatorID: user.userID });
       await fetchAuditStatus(); // 等待刷新完成
       setSelectedDetail(null); // 审核后关闭弹窗
     } catch (e) {
