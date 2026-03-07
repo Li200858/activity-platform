@@ -480,9 +480,7 @@ app.post('/api/clubs/leave', async (req, res) => {
       const semester = getCurrentSemester();
       const confirmed = await WednesdayConfirmation.findOne({ userID, semester }).lean();
       if (confirmed) return res.status(400).json({ error: '已最终确认周三社团，无法直接退出，请通过社团轮换更改' });
-      const wednesdayMembers = await ClubMember.find({ userID, status: { $ne: 'rejected' } }).populate('clubID');
-      const wedCount = wednesdayMembers.filter(m => m.clubID && clubHasWednesday(m.clubID.category)).length;
-      if (wedCount <= 2) return res.status(400).json({ error: '周三社团至少需保留 2 个，无法退出' });
+      // 未确认前可自由退出，不限制数量
     }
     await ClubMember.deleteOne({ userID, clubID });
     res.json({ success: true });
