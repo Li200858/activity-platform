@@ -1351,7 +1351,24 @@ app.post('/api/audit/approve', async (req, res) => {
     const { type, id, status, operatorID } = req.body;
     if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
     const op = await User.findOne({ userID: operatorID });
-    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可审核' });
+    if (!op) return res.status(401).json({ error: '用户不存在' });
+
+    // 社团加入申请：社团创建者或核心成员可审核，其他类型仅管理员可审核
+    if (type === 'clubJoin') {
+      const item = await ClubMember.findById(id).populate('clubID');
+      if (!item) return res.status(404).json({ error: '申请不存在' });
+      const club = item.clubID;
+      if (!club) return res.status(404).json({ error: '社团不存在' });
+      const isAdmin = op.role === 'admin' || op.role === 'super_admin';
+      const isFounder = club.founderID === operatorID;
+      const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
+      if (!isAdmin && !isFounder && !isCoreMember) {
+        return res.status(403).json({ error: '仅社团创建者、核心成员或管理员可审核加入申请' });
+      }
+    } else {
+      if (op.role !== 'admin' && op.role !== 'super_admin') return res.status(403).json({ error: '仅管理员可审核' });
+    }
+
     let targetUserID = '';
     if (type === 'club') { 
       const item = await Club.findById(id); 
