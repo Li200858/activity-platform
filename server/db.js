@@ -121,6 +121,13 @@ const SemesterRotationSchema = new mongoose.Schema({
 }, { timestamps: true });
 SemesterRotationSchema.index({ userID: 1, semester: 1 }, { unique: true });
 
+// 周三社团最终确认（每学期一次，确认后无法直接退出，只能通过轮换更改）
+const WednesdayConfirmationSchema = new mongoose.Schema({
+  userID: { type: String, required: true },
+  semester: { type: String, required: true } // 如 "2025-spring" / "2025-fall"
+}, { timestamps: true });
+WednesdayConfirmationSchema.index({ userID: 1, semester: 1 }, { unique: true });
+
 // 点名场次（核心人员发起的某次点名）
 const ClubAttendanceSessionSchema = new mongoose.Schema({
   clubID: { type: mongoose.Schema.Types.ObjectId, ref: 'Club', required: true },
@@ -175,6 +182,7 @@ const ActivityRegistration = mongoose.model('ActivityRegistration', ActivityRegi
 const Notification = mongoose.model('Notification', NotificationSchema);
 const Feedback = mongoose.model('Feedback', FeedbackSchema);
 const SemesterRotation = mongoose.model('SemesterRotation', SemesterRotationSchema);
+const WednesdayConfirmation = mongoose.model('WednesdayConfirmation', WednesdayConfirmationSchema);
 const ClubAttendanceSession = mongoose.model('ClubAttendanceSession', ClubAttendanceSessionSchema);
 const ClubAttendanceRecord = mongoose.model('ClubAttendanceRecord', ClubAttendanceRecordSchema);
 const ClubVenueRequest = mongoose.model('ClubVenueRequest', ClubVenueRequestSchema);
@@ -211,6 +219,7 @@ module.exports = {
   Feedback,
   Notification,
   SemesterRotation,
+  WednesdayConfirmation,
   ClubAttendanceSession,
   ClubAttendanceRecord,
   ClubVenueRequest,

@@ -43,6 +43,8 @@ function ClubMatters({ user }) {
   const [rotateTargetClubId, setRotateTargetClubId] = useState(null); // 轮换时选择要替换成的社团，再选要替换的
   const [wednesdayCollapsed, setWednesdayCollapsed] = useState(false); // 我的社团状态 - 周三社团折叠
   const [dailyCollapsed, setDailyCollapsed] = useState(false); // 我的社团状态 - 日常社团折叠
+  const [wednesdayConfirmed, setWednesdayConfirmed] = useState(false); // 周三社团是否已最终确认
+  const [showFinalConfirmModal, setShowFinalConfirmModal] = useState(false); // 最终确认弹窗
 
   useEffect(() => {
     fetchClubs();
@@ -69,11 +71,13 @@ function ClubMatters({ user }) {
       setMyWednesdayClubs(wedList);
       setMyClub(res.data?.wednesday ?? wedList[0] ?? null);
       setMyDailyClubs(res.data?.daily ?? []);
+      setWednesdayConfirmed(res.data?.wednesdayConfirmed ?? false);
     } catch (e) {
       console.error("无法获取个人社团状态", e);
       setMyClub(null);
       setMyWednesdayClubs([]);
       setMyDailyClubs([]);
+      setWednesdayConfirmed(false);
     }
   };
 
@@ -87,6 +91,17 @@ function ClubMatters({ user }) {
       fetchClubs();
     } catch (e) {
       alert(e.response?.data?.error || '退出失败');
+    }
+  };
+
+  const handleWednesdayFinalConfirm = async () => {
+    try {
+      await api.post('/clubs/wednesday-confirm', { userID: user.userID });
+      setShowFinalConfirmModal(false);
+      setWednesdayConfirmed(true);
+      fetchMyClub();
+    } catch (e) {
+      alert(e.response?.data?.error || '确认失败');
     }
   };
 
@@ -422,6 +437,18 @@ function ClubMatters({ user }) {
 
   return (
     <div className="space-y-6">
+      {/* 周三社团最终确认弹窗 */}
+      {showFinalConfirmModal && (
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setShowFinalConfirmModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <p className="text-gray-800 font-medium mb-4">{t('club.finalConfirmMessage')}</p>
+            <div className="flex gap-3">
+              <button onClick={() => setShowFinalConfirmModal(false)} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300">{t('common.cancel')}</button>
+              <button onClick={handleWednesdayFinalConfirm} className="flex-1 py-2.5 bg-amber-500 text-white rounded-xl font-bold hover:bg-amber-600">{t('common.confirm')}</button>
+            </div>
+          </div>
+        </div>
+      )}
       {/* 当前社团状态卡片：周三社团（一个）+ 日常社团（多个），可折叠 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">{t('club.menu')}</h2>
@@ -466,7 +493,9 @@ function ClubMatters({ user }) {
                               }`}>
                                 {m.status === 'approved' ? (isEn ? 'Joined' : '已加入') : m.status === 'rejected' ? (isEn ? 'Rejected' : '被拒绝') : (isEn ? 'Pending' : '审核中')}
                               </span>
-                              <button onClick={() => handleLeaveClub(c?.id)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
+                              {!wednesdayConfirmed && (
+                                <button onClick={() => handleLeaveClub(c?.id)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
+                              )}
                             </span>
                           </li>
                         );
@@ -474,6 +503,18 @@ function ClubMatters({ user }) {
                     </ul>
                     {myWednesdayClubs.length < 2 && (
                       <p className="text-amber-600 text-xs font-medium mt-2">{t('club.needTwo')}</p>
+                    )}
+                    {!wednesdayConfirmed && myWednesdayClubs.filter(m => m.status === 'approved').length >= 2 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowFinalConfirmModal(true)}
+                        className="mt-3 w-full py-2.5 bg-amber-500 text-white rounded-xl text-sm font-bold hover:bg-amber-600 transition-colors"
+                      >
+                        {t('club.finalConfirm')}
+                      </button>
+                    )}
+                    {wednesdayConfirmed && (
+                      <p className="mt-2 text-xs text-amber-600 font-medium">{t('club.finalConfirmDone')}</p>
                     )}
                   </>
                 )}
@@ -618,8 +659,8 @@ function ClubMatters({ user }) {
                             {t('club.downloadExcel')}
                           </button>
                         )}
-                        {/* 解散社团按钮 - 仅创建者可见（管理员不行） */}
-                        {club.founderID === user.userID && (
+                        {/* 解散社团按钮 - 创建者或 super_admin 可见 */}
+                        {(club.founderID === user.userID || user.role === 'super_admin') && (
                           <button 
                             onClick={async () => {
                               if (!window.confirm('确定要解散此社团吗？所有成员将回到自由人身份。')) return;
@@ -1683,8 +1724,8 @@ function ClubMatters({ user }) {
                     {t('club.downloadExcel')}
                   </button>
                 )}
-                {/* 解散社团按钮 - 仅创建者可见（管理员不行） */}
-                {selectedClubDetail.founderID === user.userID && (
+                {/* 解散社团按钮 - 创建者或 super_admin 可见 */}
+                {(selectedClubDetail.founderID === user.userID || user.role === 'super_admin') && (
                   <button 
                     onClick={async () => {
                       if (!window.confirm('确定要解散此社团吗？所有成员将回到自由人身份。')) return;

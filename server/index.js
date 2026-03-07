@@ -11,7 +11,7 @@ const XLSX = require('xlsx');
 const { pinyin } = require('pinyin-pro');
 const { 
   mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification, SemesterRotation,
-  ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest, ClubVenueSchedule, IDRecoveryRequest
+  WednesdayConfirmation, ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest, ClubVenueSchedule, IDRecoveryRequest
 } = require('./db');
 
 const app = express();
@@ -448,7 +448,8 @@ const clubHasWednesday = (c) => (c || 'wednesday') === 'wednesday' || (c === 'bo
 
 app.get('/api/clubs/my/:userID', async (req, res) => {
   try {
-    const members = await ClubMember.find({ userID: req.params.userID, status: { $ne: 'rejected' } }).populate('clubID');
+    const userID = req.params.userID;
+    const members = await ClubMember.find({ userID, status: { $ne: 'rejected' } }).populate('clubID');
     const wednesdayList = members.filter(m => m.clubID && clubHasWednesday(m.clubID.category));
     const daily = members.filter(m => m.clubID && m.clubID.category === 'daily');
     const format = (m) => {
@@ -459,10 +460,13 @@ app.get('/api/clubs/my/:userID', async (req, res) => {
       return result;
     };
     const wednesdayClubs = wednesdayList.map(format);
+    const semester = getCurrentSemester();
+    const confirmed = await WednesdayConfirmation.findOne({ userID, semester }).lean();
     res.json({
       wednesday: wednesdayClubs[0] || null,
       wednesdayClubs,
-      daily: daily.map(format)
+      daily: daily.map(format),
+      wednesdayConfirmed: !!confirmed
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -473,11 +477,32 @@ app.post('/api/clubs/leave', async (req, res) => {
     if (!userID || !clubID) return res.status(400).json({ error: '缺少 userID 或 clubID' });
     const club = await Club.findById(clubID);
     if (club && clubHasWednesday(club.category)) {
+      const semester = getCurrentSemester();
+      const confirmed = await WednesdayConfirmation.findOne({ userID, semester }).lean();
+      if (confirmed) return res.status(400).json({ error: '已最终确认周三社团，无法直接退出，请通过社团轮换更改' });
       const wednesdayMembers = await ClubMember.find({ userID, status: { $ne: 'rejected' } }).populate('clubID');
       const wedCount = wednesdayMembers.filter(m => m.clubID && clubHasWednesday(m.clubID.category)).length;
       if (wedCount <= 2) return res.status(400).json({ error: '周三社团至少需保留 2 个，无法退出' });
     }
     await ClubMember.deleteOne({ userID, clubID });
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 周三社团最终确认（确认后无法直接退出，只能通过轮换更改）
+app.post('/api/clubs/wednesday-confirm', async (req, res) => {
+  try {
+    const { userID } = req.body;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const wednesdayMembers = await ClubMember.find({ userID, status: 'approved' }).populate('clubID');
+    const wedCount = wednesdayMembers.filter(m => m.clubID && clubHasWednesday(m.clubID.category)).length;
+    if (wedCount < 2) return res.status(400).json({ error: '至少需有 2 个已通过的周三社团才能最终确认' });
+    const semester = getCurrentSemester();
+    await WednesdayConfirmation.findOneAndUpdate(
+      { userID, semester },
+      { $set: { userID, semester } },
+      { upsert: true, new: true }
+    );
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1880,14 +1905,15 @@ app.delete('/api/clubs/:id', async (req, res) => {
     const club = await Club.findById(id);
     if (!club) return res.status(404).json({ error: '社团不存在' });
     
-    // 检查权限：只有社团创建者可以解散（管理员不能解散）
+    // 检查权限：社团创建者或 super_admin 可解散（admin 不能解散）
     const user = await User.findOne({ userID });
     if (!user) return res.status(401).json({ error: '用户不存在' });
     
     const isFounder = club.founderID === userID;
+    const isSuperAdmin = user.role === 'super_admin';
     
-    if (!isFounder) {
-      return res.status(403).json({ error: '只有社团创建者可以解散此社团' });
+    if (!isFounder && !isSuperAdmin) {
+      return res.status(403).json({ error: '只有社团创建者或超级管理员可以解散此社团' });
     }
     
     // 删除所有成员记录（成员回到自由人身份）

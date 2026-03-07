@@ -109,6 +109,9 @@ export const zh = {
     categoryLabel: '分类',
     typeLabel: '类型',
     blocksAndTime: '板块与时间',
+    finalConfirm: '最终确认',
+    finalConfirmMessage: '确定当前周三社团的选择吗？确认后将无法直接退出社团，只能通过社团轮换改变组合。',
+    finalConfirmDone: '已最终确认，如需更改请使用社团轮换',
   },
   activity: {
     ongoing: '正在进行的活动',
@@ -392,6 +395,9 @@ export const en = {
     categoryLabel: 'Category',
     typeLabel: 'Type',
     blocksAndTime: 'Blocks & time',
+    finalConfirm: 'Final confirm',
+    finalConfirmMessage: 'Confirm your Wednesday club selection? After confirmation you cannot leave directly; changes must be made via club rotation.',
+    finalConfirmDone: 'Confirmed. Use club rotation to make changes.',
   },
   activity: {
     ongoing: 'Ongoing activities',
