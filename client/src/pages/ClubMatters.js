@@ -41,6 +41,8 @@ function ClubMatters({ user }) {
   const [clubSearchQuery, setClubSearchQuery] = useState(''); // 社团报名/轮换 搜索
   const [clubSearchFocused, setClubSearchFocused] = useState(false);
   const [rotateTargetClubId, setRotateTargetClubId] = useState(null); // 轮换时选择要替换成的社团，再选要替换的
+  const [wednesdayCollapsed, setWednesdayCollapsed] = useState(false); // 我的社团状态 - 周三社团折叠
+  const [dailyCollapsed, setDailyCollapsed] = useState(false); // 我的社团状态 - 日常社团折叠
 
   useEffect(() => {
     fetchClubs();
@@ -420,62 +422,94 @@ function ClubMatters({ user }) {
 
   return (
     <div className="space-y-6">
-      {/* 当前社团状态卡片：周三社团（一个）+ 日常社团（多个） */}
+      {/* 当前社团状态卡片：周三社团（一个）+ 日常社团（多个），可折叠 */}
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">{t('club.menu')}</h2>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <div>
-              <span className="text-xs font-bold text-gray-500 mr-2">{t('club.wednesday')}</span>
-              <span className="text-[10px] text-gray-400 ml-2">{t('club.wednesdayHint')}</span>
-              {myWednesdayClubs.length === 0 ? (
-                <p className="text-gray-400 text-sm italic mt-1">{t('club.notJoined')}</p>
-              ) : (
-                <>
-                  <p className="text-xs text-blue-600 font-bold mt-1">{t('club.usedSlots')} {(() => {
-                    const used = new Set();
-                    myWednesdayClubs.forEach(m => { const c = m.Club || m.clubID; (c?.blocks || []).forEach(b => used.add(b)); });
-                    return used.size;
-                  })()} / {t('club.slotsTotal')}</p>
-                  <ul className="mt-2 space-y-2">
-                    {myWednesdayClubs.map(m => {
-                      const c = m.Club || m.clubID;
-                      return (
-                        <li key={c?.id || m.id} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-2">
-                          <span className="font-bold text-gray-800"><TranslatableContent>{c?.name || (isEn ? 'Unknown' : '未知')}</TranslatableContent></span>
-                          <span className="flex items-center gap-2">
-                            <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
-                              m.status === 'approved' ? 'bg-green-50 text-green-600' :
-                              m.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
-                            }`}>
-                              {m.status === 'approved' ? (isEn ? 'Joined' : '已加入') : m.status === 'rejected' ? (isEn ? 'Rejected' : '被拒绝') : (isEn ? 'Pending' : '审核中')}
+        <div className="space-y-2">
+          {/* 周三社团 - 可折叠 */}
+          <div className="border border-gray-100 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setWednesdayCollapsed(c => !c)}
+              className="w-full flex justify-between items-center px-4 py-3 bg-gray-50/50 hover:bg-gray-50 transition-colors text-left"
+            >
+              <span className="text-xs font-bold text-gray-600">{t('club.wednesday')}</span>
+              <span className="text-gray-400 text-xs">
+                {myWednesdayClubs.length === 0
+                  ? (isEn ? 'Not joined' : '未加入')
+                  : `${myWednesdayClubs.length} ${t('common.clubs')}`}
+              </span>
+              <span className={`text-gray-400 transition-transform ${wednesdayCollapsed ? '' : 'rotate-180'}`}>▼</span>
+            </button>
+            {!wednesdayCollapsed && (
+              <div className="px-4 py-3 border-t border-gray-100">
+                <span className="text-[10px] text-gray-400">{t('club.wednesdayHint')}</span>
+                {myWednesdayClubs.length === 0 ? (
+                  <p className="text-gray-400 text-sm italic mt-1">{t('club.notJoined')}</p>
+                ) : (
+                  <>
+                    <p className="text-xs text-blue-600 font-bold mt-1">{t('club.usedSlots')} {(() => {
+                      const used = new Set();
+                      myWednesdayClubs.forEach(m => { const c = m.Club || m.clubID; (c?.blocks || []).forEach(b => used.add(b)); });
+                      return used.size;
+                    })()} / {t('club.slotsTotal')}</p>
+                    <ul className="mt-2 space-y-2">
+                      {myWednesdayClubs.map(m => {
+                        const c = m.Club || m.clubID;
+                        return (
+                          <li key={c?.id || m.id} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-2">
+                            <span className="font-bold text-gray-800"><TranslatableContent>{c?.name || (isEn ? 'Unknown' : '未知')}</TranslatableContent></span>
+                            <span className="flex items-center gap-2">
+                              <span className={`px-2 py-0.5 text-[10px] font-bold rounded-md ${
+                                m.status === 'approved' ? 'bg-green-50 text-green-600' :
+                                m.status === 'rejected' ? 'bg-red-50 text-red-600' : 'bg-orange-50 text-orange-600'
+                              }`}>
+                                {m.status === 'approved' ? (isEn ? 'Joined' : '已加入') : m.status === 'rejected' ? (isEn ? 'Rejected' : '被拒绝') : (isEn ? 'Pending' : '审核中')}
+                              </span>
+                              <button onClick={() => handleLeaveClub(c?.id)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
                             </span>
-                            <button onClick={() => handleLeaveClub(c?.id)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
-                          </span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  {myWednesdayClubs.length < 2 && (
-                    <p className="text-amber-600 text-xs font-medium mt-2">{t('club.needTwo')}</p>
-                  )}
-                </>
-              )}
-            </div>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                    {myWednesdayClubs.length < 2 && (
+                      <p className="text-amber-600 text-xs font-medium mt-2">{t('club.needTwo')}</p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
           </div>
-          <div>
-            <span className="text-xs font-bold text-gray-500 mr-2">{t('club.daily')}</span>
-            {myDailyClubs.length === 0 ? (
-              <p className="text-gray-400 text-sm italic mt-1">{t('club.notJoined')}</p>
-            ) : (
-              <ul className="mt-2 space-y-2">
-                {myDailyClubs.map(m => (
-                  <li key={m.Club?.id || m.clubID} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-2">
-                    <span className="font-bold text-gray-800"><TranslatableContent>{m.Club?.name || (isEn ? 'Unknown' : '未知')}</TranslatableContent></span>
-                    <button onClick={() => handleLeaveClub(m.Club?.id || m.clubID)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
-                  </li>
-                ))}
-              </ul>
+          {/* 日常社团 - 可折叠 */}
+          <div className="border border-gray-100 rounded-xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setDailyCollapsed(c => !c)}
+              className="w-full flex justify-between items-center px-4 py-3 bg-gray-50/50 hover:bg-gray-50 transition-colors text-left"
+            >
+              <span className="text-xs font-bold text-gray-600">{t('club.daily')}</span>
+              <span className="text-gray-400 text-xs">
+                {myDailyClubs.length === 0
+                  ? (isEn ? 'Not joined' : '未加入')
+                  : `${myDailyClubs.length} ${t('common.clubs')}`}
+              </span>
+              <span className={`text-gray-400 transition-transform ${dailyCollapsed ? '' : 'rotate-180'}`}>▼</span>
+            </button>
+            {!dailyCollapsed && (
+              <div className="px-4 py-3 border-t border-gray-100">
+                {myDailyClubs.length === 0 ? (
+                  <p className="text-gray-400 text-sm italic mt-1">{t('club.notJoined')}</p>
+                ) : (
+                  <ul className="mt-2 space-y-2">
+                    {myDailyClubs.map(m => (
+                      <li key={m.Club?.id || m.clubID} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-2">
+                        <span className="font-bold text-gray-800"><TranslatableContent>{m.Club?.name || (isEn ? 'Unknown' : '未知')}</TranslatableContent></span>
+                        <button onClick={() => handleLeaveClub(m.Club?.id || m.clubID)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
           </div>
         </div>

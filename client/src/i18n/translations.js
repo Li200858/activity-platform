@@ -44,6 +44,7 @@ export const zh = {
     capacity: '人数',
     full: '人数已满',
     block: '时段',
+    clubs: '个社团',
   },
   club: {
     menu: '我的社团状态',
@@ -326,6 +327,7 @@ export const en = {
     capacity: 'Capacity',
     full: 'Full',
     block: 'Block',
+    clubs: ' clubs',
   },
   club: {
     menu: 'My clubs',
