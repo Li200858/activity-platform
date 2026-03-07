@@ -1406,6 +1406,10 @@ function ClubMatters({ user }) {
                         <span className="font-medium">联系方式：</span>
                         <span><TranslatableContent>{selectedClubDetail.contact || '（未填写）'}</TranslatableContent></span>
                       </p>
+                      <p className="text-gray-700">
+                        <span className="font-medium">{t('club.actualLeader')}：</span>
+                        <span>{selectedClubDetail.actualLeaderName || '（未填写，创建者即负责人）'}</span>
+                      </p>
                     </div>
                   ) : (
                     <div className="mt-3 space-y-3">
