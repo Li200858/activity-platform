@@ -26,7 +26,7 @@ function Feedback({ user }) {
     if (!content.trim()) return;
     setLoading(true);
     try {
-      await api.post('/feedback', { content, authorID: user.userID });
+      await api.post('/feedback', { content, authorID: user.userID, operatorID: user.userID });
       alert(t('common.success') + (isEn ? ', thank you!' : '，管理员将尽快处理！'));
       setContent('');
       fetchMyFeedbacks();

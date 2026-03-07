@@ -85,7 +85,7 @@ function ClubMatters({ user }) {
     if (!clubID) return;
     if (!window.confirm('确定要退出该社团吗？')) return;
     try {
-      await api.post('/clubs/leave', { userID: user.userID, clubID });
+      await api.post('/clubs/leave', { userID: user.userID, clubID, operatorID: user.userID });
       alert('已退出社团');
       fetchMyClub();
       fetchClubs();
@@ -96,7 +96,7 @@ function ClubMatters({ user }) {
 
   const handleWednesdayFinalConfirm = async () => {
     try {
-      await api.post('/clubs/wednesday-confirm', { userID: user.userID });
+      await api.post('/clubs/wednesday-confirm', { userID: user.userID, operatorID: user.userID });
       setShowFinalConfirmModal(false);
       setWednesdayConfirmed(true);
       fetchMyClub();
@@ -176,6 +176,7 @@ function ClubMatters({ user }) {
       Object.keys(payload).filter(k => k !== 'blocks').forEach(key => data.append(key, payload[key]));
       data.append('blocks', needsBlocks ? JSON.stringify(formData.blocks) : '[]');
       data.append('founderID', user.userID);
+      data.append('operatorID', user.userID);
       if (formData.actualLeaderName?.trim()) data.append('actualLeaderName', formData.actualLeaderName.trim());
       if (file) data.append('file', file);
       await api.post('/clubs', data);
@@ -193,7 +194,7 @@ function ClubMatters({ user }) {
 
   const handleRegister = async (clubID) => {
     try {
-      await api.post('/clubs/register', { userID: user.userID, clubID });
+      await api.post('/clubs/register', { userID: user.userID, clubID, operatorID: user.userID });
       alert('报名成功');
       fetchMyClub();
       fetchClubs();
@@ -205,7 +206,7 @@ function ClubMatters({ user }) {
 
   const handleRotate = async (newClubID, oldClubID) => {
     try {
-      const payload = { userID: user.userID, newClubID };
+      const payload = { userID: user.userID, newClubID, operatorID: user.userID };
       if (oldClubID) payload.oldClubID = oldClubID;
       await api.post('/clubs/rotate', payload);
       alert('社团轮换成功');

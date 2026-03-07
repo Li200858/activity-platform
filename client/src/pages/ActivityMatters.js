@@ -81,6 +81,7 @@ function ActivityMatters({ user }) {
       data.append('phaseTimeEnd', formatDateTime(formData.phaseTimeEndStart, formData.phaseTimeEndEnd) || '');
       
       data.append('organizerID', user.userID);
+      data.append('operatorID', user.userID);
       if (file) data.append('file', file);
       if (paymentQRCode) data.append('paymentQRCode', paymentQRCode);
 
@@ -116,6 +117,7 @@ function ActivityMatters({ user }) {
       const formData = new FormData();
       formData.append('activityID', selectedActivity.id);
       formData.append('userID', user.userID);
+      formData.append('operatorID', user.userID);
       formData.append('name', regForm.name);
       formData.append('class', regForm.class);
       formData.append('reason', regForm.reason);

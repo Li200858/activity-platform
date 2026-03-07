@@ -308,7 +308,9 @@ app.post('/api/clubs/check-name', async (req, res) => {
 // 社团
 app.post('/api/clubs', upload.single('file'), async (req, res) => {
   try {
-    const { name } = req.body;
+    const { name, founderID: reqFounderID, operatorID } = req.body;
+    const founderID = reqFounderID || '';
+    if (!operatorID || operatorID !== founderID) return res.status(403).json({ error: '创建者与操作者不一致' });
     
     // 检查社团名称是否与已有社团重复（包括pending和approved状态）
     const existingClub = await Club.findOne({ name });
@@ -339,7 +341,6 @@ app.post('/api/clubs', upload.single('file'), async (req, res) => {
       blocks = [];
     }
     
-    const founderID = req.body.founderID || '';
     const contact = String(req.body.contact || '').trim();
     if (!contact) return res.status(400).json({ error: '请填写联系方式，便于线下联系' });
     const actualLeaderName = String(req.body.actualLeaderName || '').trim() || undefined;
@@ -479,8 +480,9 @@ app.get('/api/clubs/my/:userID', async (req, res) => {
 
 app.post('/api/clubs/leave', async (req, res) => {
   try {
-    const { userID, clubID } = req.body;
+    const { userID, clubID, operatorID } = req.body;
     if (!userID || !clubID) return res.status(400).json({ error: '缺少 userID 或 clubID' });
+    if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己操作' });
     const club = await Club.findById(clubID);
     if (club && clubHasWednesday(club.category)) {
       const semester = getCurrentSemester();
@@ -496,8 +498,9 @@ app.post('/api/clubs/leave', async (req, res) => {
 // 周三社团最终确认（确认后无法直接退出，只能通过轮换更改）
 app.post('/api/clubs/wednesday-confirm', async (req, res) => {
   try {
-    const { userID } = req.body;
+    const { userID, operatorID } = req.body;
     if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己操作' });
     const wednesdayMembers = await ClubMember.find({ userID, status: 'approved' }).populate('clubID');
     const wedCount = wednesdayMembers.filter(m => m.clubID && clubHasWednesday(m.clubID.category)).length;
     if (wedCount < 2) return res.status(400).json({ error: '至少需有 2 个已通过的周三社团才能最终确认' });
@@ -682,7 +685,8 @@ const WEDNESDAY_BLOCK_LIMIT = 4;
 
 app.post('/api/clubs/register', async (req, res) => {
   try {
-    const { userID, clubID } = req.body;
+    const { userID, clubID, operatorID } = req.body;
+    if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己报名' });
     const club = await Club.findById(clubID);
     if (!club) return res.status(404).json({ error: '社团不存在' });
     
@@ -787,7 +791,8 @@ app.post('/api/clubs/rotation-quota/reset', async (req, res) => {
 app.post('/api/clubs/rotate', async (req, res) => {
   try {
     if (!isRotationAllowed()) return res.status(403).json({ error: '不在轮换时间' });
-    const { userID, newClubID, oldClubID } = req.body;
+    const { userID, newClubID, oldClubID, operatorID } = req.body;
+    if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己操作' });
     const members = await ClubMember.find({ userID }).populate('clubID');
     const wednesdayMembers = members.filter(m => m.clubID && clubHasWednesday(m.clubID.category));
     if (wednesdayMembers.length === 0) return res.status(400).json({ error: '请先报名周三社团' });
@@ -904,6 +909,9 @@ const determineCurrentPhase = (activity) => {
 // 活动
 app.post('/api/activities', uploadMultiple, async (req, res) => {
   try {
+    const organizerID = req.body.organizerID || '';
+    const operatorID = req.body.operatorID || '';
+    if (!operatorID || operatorID !== organizerID) return res.status(403).json({ error: '组织者与操作者不一致' });
     const activityData = {
       ...req.body,
       file: req.files && req.files['file'] ? req.files['file'][0].filename : null,
@@ -1005,7 +1013,8 @@ app.get('/api/activities/approved', async (req, res) => {
 
 app.post('/api/activities/register', upload.single('paymentProof'), async (req, res) => {
   try {
-    const { activityID } = req.body;
+    const { activityID, userID, operatorID } = req.body;
+    if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己报名' });
     
     // 检查人数是否已满
     const activity = await Activity.findById(activityID);
@@ -1410,7 +1419,9 @@ app.post('/api/audit/approve', async (req, res) => {
 
 app.post('/api/feedback', async (req, res) => {
   try {
-    const user = await User.findOne({ userID: req.body.authorID });
+    const { authorID, operatorID } = req.body;
+    if (!operatorID || operatorID !== authorID) return res.status(403).json({ error: '只能以自己名义提交反馈' });
+    const user = await User.findOne({ userID: authorID });
     if (!user) return res.status(404).json({ error: '用户不存在' });
     const fb = await Feedback.create({ ...req.body, authorName: user.name, authorClass: user.class, status: 'pending' });
     io.emit('notification_update', { type: 'new_feedback' });
