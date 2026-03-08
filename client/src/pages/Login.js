@@ -11,6 +11,9 @@ function Login({ onLogin, onRegister }) {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [password, setPassword] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  const [pin, setPin] = useState('');
+  const [registerPin, setRegisterPin] = useState(''); // 注册时可选 PIN
   const [showRecovery, setShowRecovery] = useState(false);
   const [recovery, setRecovery] = useState({ name: '', class: '', email: '' });
   const [recoveryMessage, setRecoveryMessage] = useState('');
@@ -21,11 +24,12 @@ function Login({ onLogin, onRegister }) {
     try {
       if (mode === 'register') {
         if (name && userClass) {
-          await onRegister(name, userClass);
+          const pinVal = registerPin.trim();
+          await onRegister(name, userClass, (pinVal && /^\d{4,6}$/.test(pinVal)) ? pinVal : undefined);
         }
       } else {
         if (name && userClass && userID) {
-          await onLogin(name, userClass, userID, showPassword ? password : undefined);
+          await onLogin(name, userClass, userID, showPassword ? password : undefined, showPin ? pin : undefined);
         } else {
           setError(t('login.error'));
         }
@@ -35,6 +39,9 @@ function Login({ onLogin, onRegister }) {
       if (data?.requirePassword) {
         setShowPassword(true);
         setError(data.error || '超级管理员需要输入密码');
+      } else if (data?.requirePin) {
+        setShowPin(true);
+        setError(data.error || '请输入 4-6 位 PIN');
       } else {
         setError(data?.error || (t('common.fail') + ', ' + (t('login.error') || '')));
       }
@@ -65,13 +72,13 @@ function Login({ onLogin, onRegister }) {
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <div className="flex mb-8 bg-gray-100 p-1 rounded-lg">
           <button 
-            onClick={() => { setMode('login'); setError(''); setShowPassword(false); setPassword(''); }}
+            onClick={() => { setMode('login'); setError(''); setShowPassword(false); setPassword(''); setShowPin(false); setPin(''); }}
             className={`flex-1 py-2 rounded-md transition-all ${mode === 'login' ? 'bg-white shadow-sm text-blue-600 font-bold' : 'text-gray-500'}`}
           >
             {t('login.login')}
           </button>
           <button 
-            onClick={() => { setMode('register'); setError(''); setShowPassword(false); setPassword(''); }}
+            onClick={() => { setMode('register'); setError(''); setShowPassword(false); setPassword(''); setRegisterPin(''); }}
             className={`flex-1 py-2 rounded-md transition-all ${mode === 'register' ? 'bg-white shadow-sm text-blue-600 font-bold' : 'text-gray-500'}`}
           >
             {t('login.register')}
@@ -133,7 +140,38 @@ function Login({ onLogin, onRegister }) {
                   />
                 </div>
               )}
+              {showPin && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">PIN（4-6 位数字）</label>
+                  <input 
+                    type="password" 
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={6}
+                    value={pin} 
+                    onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))} 
+                    className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                    placeholder="请输入 4-6 位 PIN"
+                    required
+                  />
+                </div>
+              )}
             </>
+          )}
+          {mode === 'register' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">PIN（可选，4-6 位防冒充）</label>
+              <input 
+                type="password" 
+                inputMode="numeric"
+                pattern="[0-9]*"
+                maxLength={6}
+                value={registerPin} 
+                onChange={(e) => setRegisterPin(e.target.value.replace(/\D/g, ''))} 
+                className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                placeholder="留空则不设置"
+              />
+            </div>
           )}
           
           <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors mt-6">

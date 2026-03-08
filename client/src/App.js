@@ -16,13 +16,16 @@ const SOCKET_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 const socket = io(SOCKET_URL);
 
 function App() {
-  const { user, login, register, logout, copyID, updateEnglishName } = useAuth();
+  const { user, login, register, logout, copyID, updateEnglishName, setPin } = useAuth();
   const { lang, setLang, t, isEn } = useLanguage();
   const [activeTab, setActiveTab] = useState('社团事宜');
   const [hasNotification, setHasNotification] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const [englishDraft, setEnglishDraft] = useState('');
+  const [hideID, setHideID] = useState(() => localStorage.getItem('hideID') === '1');
+  const [showPinModal, setShowPinModal] = useState(false);
+  const [pinModalValue, setPinModalValue] = useState('');
 
   useEffect(() => {
     if (user) {
@@ -162,7 +165,33 @@ function App() {
                     {user.name}
                     {user.englishName && ` / ${user.englishName}`}
                   </p>
-                  <p className="text-[10px] text-gray-400 font-mono">ID: {user.userID}</p>
+                  <div className="flex items-center gap-1">
+                    <p className="text-[10px] text-gray-400 font-mono">ID: {hideID ? '••••••••' : user.userID}</p>
+                    <button
+                      type="button"
+                      onClick={() => { const v = !hideID; setHideID(v); localStorage.setItem('hideID', v ? '1' : '0'); }}
+                      className="text-gray-400 hover:text-blue-600 p-0.5"
+                      title={hideID ? '显示ID' : '隐藏ID'}
+                    >
+                      {hideID ? (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                      ) : (
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                      )}
+                    </button>
+                  </div>
+                  {user.lastLoginAt && (() => {
+                    try {
+                      const d = new Date(user.lastLoginAt);
+                      if (!isNaN(d.getTime())) {
+                        return <p className="text-[9px] text-gray-400 mt-0.5">{isEn ? 'Last login: ' : '上次登录: '}{d.toLocaleString('zh-CN')}</p>;
+                      }
+                    } catch (_) {}
+                    return null;
+                  })()}
+                  <button type="button" onClick={() => { setShowPinModal(true); setPinModalValue(''); }} className="text-[9px] text-blue-500 hover:underline mt-0.5">
+                    {(user.hasPin === true) ? (isEn ? 'Change PIN' : '修改PIN') : (isEn ? 'Set PIN' : '设置PIN')}
+                  </button>
                 </div>
                 <div className="flex items-center gap-2">
                   <input
@@ -287,6 +316,47 @@ function App() {
         {activeTab === '审核状态' && <AuditStatus user={user} />}
         {activeTab === '反馈收集' && <FeedbackCollection user={user} />}
       </main>
+
+      {/* PIN 设置弹窗 */}
+      {showPinModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+            <h3 className="font-bold text-gray-800 mb-3">{user?.hasPin ? (isEn ? 'Change PIN' : '修改 PIN') : (isEn ? 'Set PIN' : '设置 PIN')}</h3>
+            <p className="text-xs text-gray-500 mb-3">{isEn ? '4-6 digits, leave empty to remove' : '4-6 位数字，留空则移除'}</p>
+            <input
+              type="password"
+              inputMode="numeric"
+              maxLength={6}
+              value={pinModalValue}
+              onChange={e => setPinModalValue(e.target.value.replace(/\D/g, ''))}
+              placeholder="4-6 位数字"
+              className="w-full border rounded-lg px-4 py-3 mb-4 font-mono"
+            />
+            <div className="flex gap-2">
+              <button onClick={() => setShowPinModal(false)} className="flex-1 py-2 rounded-lg border border-gray-300 font-bold text-gray-600">{isEn ? 'Cancel' : '取消'}</button>
+              <button
+                onClick={async () => {
+                  const val = pinModalValue.trim();
+                  if (val && (val.length < 4 || val.length > 6)) {
+                    alert(isEn ? 'PIN must be 4-6 digits' : 'PIN 须为 4-6 位数字');
+                    return;
+                  }
+                  try {
+                    await setPin(val || null);
+                    setShowPinModal(false);
+                    alert(isEn ? 'Done' : '已保存');
+                  } catch (e) {
+                    alert(e.response?.data?.error || (isEn ? 'Failed' : '操作失败'));
+                  }
+                }}
+                className="flex-1 py-2 rounded-lg bg-blue-600 text-white font-bold"
+              >
+                {isEn ? 'Save' : '保存'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

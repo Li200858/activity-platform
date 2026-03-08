@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const crypto = require('crypto');
 const socketIO = require('socket.io');
 const cors = require('cors');
 const multer = require('multer');
@@ -101,24 +102,31 @@ app.get('/api/time', (req, res) => {
   });
 });
 
+function hashPin(userID, pin) {
+  return crypto.createHash('sha256').update(userID + ':' + pin).digest('hex');
+}
+
 // 用户注册与登录
 app.post('/api/user/register', async (req, res) => {
   try {
-    const { name, class: userClass } = req.body;
+    const { name, class: userClass, pin } = req.body;
     const existing = await User.findOne({ name });
     if (existing) return res.status(400).json({ error: '该姓名已被注册' });
     const userID = uuidv4().substring(0, 8).toUpperCase();
     const role = (name === '管理员' || (name === '李昌轩' && userClass === 'NEE4')) ? 'super_admin' : 'user';
-    const user = await User.create({ userID, name, class: userClass, role });
+    const pinHash = (pin && /^\d{4,6}$/.test(String(pin))) ? hashPin(userID, String(pin)) : null;
+    const user = await User.create({ userID, name, class: userClass, role, pinHash });
     const userObj = user.toObject();
     userObj.id = user._id.toString();
+    userObj.hasPin = !!pinHash;
+    delete userObj.pinHash;
     res.json(userObj);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 app.post('/api/user/login', async (req, res) => {
   try {
-    const { userID, name, class: userClass, password } = req.body;
+    const { userID, name, class: userClass, password, pin } = req.body;
     const user = await User.findOne({ userID });
     if (!user || user.name !== name || user.class !== userClass) return res.status(401).json({ error: '信息不匹配' });
 
@@ -130,9 +138,54 @@ app.post('/api/user/login', async (req, res) => {
       if (password !== expectedPassword) return res.status(401).json({ error: '密码错误' });
     }
 
+    // 普通用户若设置了 PIN，需验证
+    if (user.pinHash) {
+      if (!pin || !/^\d{4,6}$/.test(String(pin))) return res.status(401).json({ error: '请输入 4-6 位 PIN', requirePin: true });
+      if (hashPin(userID, String(pin)) !== user.pinHash) return res.status(401).json({ error: 'PIN 错误' });
+    }
+
+    const prevLoginAt = user.lastLoginAt;
+    user.lastLoginAt = new Date();
+    await user.save();
+
     const userObj = user.toObject();
     userObj.id = user._id.toString();
+    userObj.hasPin = !!(user.pinHash != null && user.pinHash !== '');
+    delete userObj.pinHash;
+    // 上次登录时间：兼容旧用户（无此字段）及各种格式
+    try {
+      userObj.lastLoginAt = (prevLoginAt && typeof prevLoginAt.toISOString === 'function') ? prevLoginAt.toISOString() : null;
+    } catch (_) {
+      userObj.lastLoginAt = null;
+    }
     res.json(userObj);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 设置/修改 PIN（4-6 位数字，可选，用于防冒充）
+app.put('/api/user/set-pin', async (req, res) => {
+  try {
+    const { userID, operatorID, pin } = req.body;
+    if (!userID || operatorID !== userID) return res.status(403).json({ error: '只能修改自己的 PIN' });
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(404).json({ error: '用户不存在' });
+    if (!pin) {
+      user.pinHash = null;
+      await user.save();
+      const obj = user.toObject();
+      obj.id = user._id.toString();
+      obj.hasPin = false;
+      delete obj.pinHash;
+      return res.json(obj);
+    }
+    if (!/^\d{4,6}$/.test(String(pin))) return res.status(400).json({ error: 'PIN 须为 4-6 位数字' });
+    user.pinHash = hashPin(userID, String(pin));
+    await user.save();
+    const obj = user.toObject();
+    obj.id = user._id.toString();
+    obj.hasPin = true;
+    delete obj.pinHash;
+    res.json(obj);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
