@@ -650,8 +650,8 @@ function ClubMatters({ user }) {
                         >
                           {t('club.viewDetail')}
                         </button>
-                        {/* 参与人员按钮 - 仅创建者和管理员可见 */}
-                        {(club.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                        {/* 参与人员按钮 - 社长/核心成员/管理员可见 */}
+                        {canManageClub(club) && (
                           <button 
                             onClick={() => fetchMembers(club.id)}
                             className="bg-purple-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-purple-700 transition-all"
@@ -659,8 +659,8 @@ function ClubMatters({ user }) {
                             {t('club.participants')}
                           </button>
                         )}
-                        {/* 下载Excel按钮 - 仅创建者和管理员可见 */}
-                        {(club.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                        {/* 下载Excel按钮 - 社长/核心成员/管理员可见 */}
+                        {canManageClub(club) && (
                           <button 
                             onClick={() => {
                               const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
@@ -1257,7 +1257,7 @@ function ClubMatters({ user }) {
             
             <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
               {/* 社团分类与类型区块（可编辑） */}
-              {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+              {canManageClub(selectedClubDetail) && (
                 <div className="border-l-4 border-indigo-100 pl-4 py-2">
                   <div className="flex justify-between items-center mb-2">
                     <label className="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">{t('club.categoryTypeIntro')}</label>
@@ -1406,14 +1406,14 @@ function ClubMatters({ user }) {
                           {m.name}
                           {m.englishName && ` / ${m.englishName}`}
                         </span>
-                        {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && selectedClubDetail.founderID !== m.userID && (
+                        {canManageClub(selectedClubDetail) && selectedClubDetail.founderID !== m.userID && (
                           <button type="button" onClick={() => removeCoreMember(m.userID)} className="text-red-500 text-xs font-bold hover:underline">移除</button>
                         )}
                       </div>
                     ))
                   )}
                 </div>
-                {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                {canManageClub(selectedClubDetail) && (
                   <div className="mt-3 pt-3 border-t border-amber-100">
                     <input
                       placeholder={t('club.searchCoreMember')}
@@ -1446,7 +1446,7 @@ function ClubMatters({ user }) {
               <div className="border-l-4 border-blue-100 pl-4 py-2">
                 <div className="flex justify-between items-center mb-2">
                   <label className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">活动信息</label>
-                  {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && !editingInfo && (
+                  {canManageClub(selectedClubDetail) && !editingInfo && (
                       <button
                         onClick={() => {
                           setEditingInfo(true);
@@ -1681,7 +1681,7 @@ function ClubMatters({ user }) {
                   );
                 })()}
                 {/* 参与人员按钮 - 仅创建者和管理员可见 */}
-                {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                {canManageClub(selectedClubDetail) && (
                   <button 
                     onClick={() => {
                       setSelectedClubDetail(null);
@@ -1707,7 +1707,7 @@ function ClubMatters({ user }) {
                   </button>
                 )}
                 {/* 场地申请与排期 - 创建者/管理员 */}
-                {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                {canManageClub(selectedClubDetail) && (
                   <button 
                     onClick={() => {
                       setVenueClub(selectedClubDetail);
@@ -1722,7 +1722,7 @@ function ClubMatters({ user }) {
                   </button>
                 )}
                 {/* 下载Excel按钮 - 仅创建者和管理员可见 */}
-                {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                {canManageClub(selectedClubDetail) && (
                   <button 
                     onClick={() => {
                       const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
@@ -1761,7 +1761,9 @@ function ClubMatters({ user }) {
       )}
 
       {/* 成员列表视图 */}
-      {view === 'members' && members && (
+      {view === 'members' && members && (() => {
+        const membersClub = (myClubs || []).find(c => c.id === membersClubId) || (clubs || []).find(c => c.id === membersClubId) || (selectedClubDetail?.id === membersClubId ? selectedClubDetail : null);
+        return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-black text-gray-800">{t('club.participants')} - {members.clubName}</h2>
@@ -1785,7 +1787,7 @@ function ClubMatters({ user }) {
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">序号</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">姓名</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">班级</th>
-                    {(members.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                    {canManageClub(membersClub) && (
                       <th className="px-4 py-3 text-right text-sm font-bold text-gray-700">操作</th>
                     )}
                   </tr>
@@ -1799,7 +1801,7 @@ function ClubMatters({ user }) {
                         {m.englishName && ` / ${m.englishName}`}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{m.class}</td>
-                      {(members.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                      {canManageClub(membersClub) && (
                         <td className="px-4 py-3 text-right">
                           {m.userID !== members.founderID && (
                             <button
@@ -1822,7 +1824,8 @@ function ClubMatters({ user }) {
             共 {members.members.length} 位成员
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

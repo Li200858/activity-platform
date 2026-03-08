@@ -528,7 +528,7 @@ app.post('/api/clubs/wednesday-confirm', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 社团内搜索用户（用于添加核心人员，仅创建者或管理员可调，返回 userID）
+// 社团内搜索用户（用于添加核心人员，社长/核心成员/管理员可调，返回 userID）
 app.get('/api/clubs/:id/search-users', async (req, res) => {
   try {
     const { id } = req.params;
@@ -539,8 +539,9 @@ app.get('/api/clubs/:id/search-users', async (req, res) => {
     const operator = await User.findOne({ userID: operatorID });
     if (!operator) return res.status(401).json({ error: '用户不存在' });
     const isFounder = club.founderID === operatorID;
+    const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
     const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
-    if (!isFounder && !isAdmin) return res.status(403).json({ error: '无权限' });
+    if (!isFounder && !isCoreMember && !isAdmin) return res.status(403).json({ error: '无权限' });
     const users = await User.find({
       $or: [
         { name: { $regex: q.trim(), $options: 'i' } },
@@ -554,7 +555,7 @@ app.get('/api/clubs/:id/search-users', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 添加/移除社团核心人员（仅创建者或管理员）
+// 添加/移除社团核心人员（社长/核心成员/管理员）
 app.put('/api/clubs/:id/core-members', async (req, res) => {
   try {
     const { id } = req.params;
@@ -567,8 +568,9 @@ app.put('/api/clubs/:id/core-members', async (req, res) => {
     const operator = await User.findOne({ userID: operatorID });
     if (!operator) return res.status(401).json({ error: '用户不存在' });
     const isFounder = club.founderID === operatorID;
+    const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
     const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
-    if (!isFounder && !isAdmin) return res.status(403).json({ error: '仅社团创建者或管理员可管理核心人员' });
+    if (!isFounder && !isCoreMember && !isAdmin) return res.status(403).json({ error: '仅社长、核心成员或管理员可管理核心人员' });
     
     const list = Array.isArray(club.coreMemberIDs) ? [...club.coreMemberIDs] : [];
     if (club.founderID && !list.includes(club.founderID)) list.unshift(club.founderID);
@@ -589,7 +591,7 @@ app.put('/api/clubs/:id/core-members', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 更新社团分类、类型与介绍（仅创建者或管理员）
+// 更新社团分类、类型与介绍（社长/核心成员/管理员）
 app.put('/api/clubs/:id/update-category-type', async (req, res) => {
   try {
     const { id } = req.params;
@@ -602,8 +604,9 @@ app.put('/api/clubs/:id/update-category-type', async (req, res) => {
     const operator = await User.findOne({ userID: operatorID });
     if (!operator) return res.status(401).json({ error: '用户不存在' });
     const isFounder = club.founderID === operatorID;
+    const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
     const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
-    if (!isFounder && !isAdmin) return res.status(403).json({ error: '仅社团创建者或管理员可修改' });
+    if (!isFounder && !isCoreMember && !isAdmin) return res.status(403).json({ error: '仅社长、核心成员或管理员可修改' });
     
     // 验证 category
     if (category !== undefined) {
@@ -655,7 +658,7 @@ app.put('/api/clubs/:id/update-category-type', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 更新社团活动信息：活动内容、活动地点、活动时间、活动时长、人数上限（仅创建者或管理员）
+// 更新社团活动信息：活动内容、活动地点、活动时间、活动时长、人数上限（社长/核心成员/管理员）
 app.put('/api/clubs/:id/update-info', async (req, res) => {
   try {
     const { id } = req.params;
@@ -668,8 +671,9 @@ app.put('/api/clubs/:id/update-info', async (req, res) => {
     const operator = await User.findOne({ userID: operatorID });
     if (!operator) return res.status(401).json({ error: '用户不存在' });
     const isFounder = club.founderID === operatorID;
+    const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
     const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
-    if (!isFounder && !isAdmin) return res.status(403).json({ error: '仅社团创建者或管理员可修改' });
+    if (!isFounder && !isCoreMember && !isAdmin) return res.status(403).json({ error: '仅社长、核心成员或管理员可修改' });
 
     if (content !== undefined) club.content = String(content || '').trim();
     if (contact !== undefined) club.contact = String(contact || '').trim();
@@ -1851,14 +1855,15 @@ app.get('/api/clubs/:id/members', async (req, res) => {
     const club = await Club.findById(id);
     if (!club) return res.status(404).json({ error: '社团不存在' });
     
-    // 检查权限：只有管理员或社团创建者可以查看
+    // 检查权限：社长/核心成员/管理员可查看
     const user = await User.findOne({ userID });
     if (!user) return res.status(401).json({ error: '用户不存在' });
     
     const isAdmin = user.role === 'admin' || user.role === 'super_admin';
     const isFounder = club.founderID === userID;
+    const isCoreMember = (club.coreMemberIDs || []).includes(userID);
     
-    if (!isAdmin && !isFounder) {
+    if (!isAdmin && !isFounder && !isCoreMember) {
       return res.status(403).json({ error: '没有权限查看成员' });
     }
     
@@ -2080,7 +2085,9 @@ app.post('/api/clubs/:id/venue-requests', async (req, res) => {
     if (!club) return res.status(404).json({ error: '社团不存在' });
     const user = await User.findOne({ userID });
     if (!user) return res.status(401).json({ error: '用户不存在' });
-    if (club.founderID !== userID && user.role !== 'admin' && user.role !== 'super_admin') return res.status(403).json({ error: '仅社团创建者或管理员可提交' });
+    const isFounder = club.founderID === userID;
+    const isCoreMember = (club.coreMemberIDs || []).includes(userID);
+    if (!isFounder && !isCoreMember && user.role !== 'admin' && user.role !== 'super_admin') return res.status(403).json({ error: '仅社长、核心成员或管理员可提交' });
     const reqDoc = await ClubVenueRequest.create({
       clubID: club._id,
       semester,
