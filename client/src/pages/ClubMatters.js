@@ -12,6 +12,7 @@ function ClubMatters({ user }) {
   const [myDailyClubs, setMyDailyClubs] = useState([]); // 日常社团（可多个）
   const [selectedClubDetail, setSelectedClubDetail] = useState(null);
   const [members, setMembers] = useState(null); // { clubName, members: [] }
+  const [membersClubId, setMembersClubId] = useState(null); // 当前查看成员列表的社团ID
   const [attendanceClub, setAttendanceClub] = useState(null);
   const [attendanceSessions, setAttendanceSessions] = useState([]);
   const [selectedAttendanceSession, setSelectedAttendanceSession] = useState(null);
@@ -224,9 +225,21 @@ function ClubMatters({ user }) {
     try {
       const res = await api.get(`/clubs/${clubId}/members?userID=${user.userID}`);
       setMembers(res.data);
+      setMembersClubId(clubId);
       setView('members');
     } catch (err) {
       alert(err.response?.data?.error || '获取成员列表失败');
+    }
+  };
+
+  const handleKickMember = async (targetUserID) => {
+    if (!membersClubId || !window.confirm('确定要将该成员踢出社团吗？')) return;
+    try {
+      await api.post(`/clubs/${membersClubId}/kick-member`, { targetUserID, operatorID: user.userID });
+      alert('已踢出');
+      fetchMembers(membersClubId);
+    } catch (err) {
+      alert(err.response?.data?.error || '踢出失败');
     }
   };
 
@@ -1772,6 +1785,9 @@ function ClubMatters({ user }) {
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">序号</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">姓名</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">班级</th>
+                    {(members.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                      <th className="px-4 py-3 text-right text-sm font-bold text-gray-700">操作</th>
+                    )}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -1783,6 +1799,18 @@ function ClubMatters({ user }) {
                         {m.englishName && ` / ${m.englishName}`}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{m.class}</td>
+                      {(members.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                        <td className="px-4 py-3 text-right">
+                          {m.userID !== members.founderID && (
+                            <button
+                              onClick={() => handleKickMember(m.userID)}
+                              className="text-red-600 text-xs font-bold hover:underline"
+                            >
+                              踢出
+                            </button>
+                          )}
+                        </td>
+                      )}
                     </tr>
                   ))}
                 </tbody>

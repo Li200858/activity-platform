@@ -689,11 +689,17 @@ app.post('/api/clubs/register', async (req, res) => {
     if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己报名' });
     const club = await Club.findById(clubID);
     if (!club) return res.status(404).json({ error: '社团不存在' });
+
+    // 检查是否已有 pending 或 approved：若有则不允许重复申请；仅被拒绝后可再次申请
+    const existing = await ClubMember.findOne({ userID, clubID: club._id });
+    if (existing) {
+      if (existing.status === 'pending') return res.status(400).json({ error: '您已申请该社团，请等待社长审核' });
+      if (existing.status === 'approved') return res.status(400).json({ error: '您已是该社团成员' });
+      // status === 'rejected'：允许再次申请，下面会更新为 pending
+    }
     
     const isWednesdayOrBoth = clubHasWednesday(club.category);
     if (isWednesdayOrBoth) {
-      const alreadyIn = await ClubMember.findOne({ userID, clubID: club._id, status: { $ne: 'rejected' } });
-      if (alreadyIn) return res.status(400).json({ error: '您已报名该社团' });
       const wednesdayMembers = await ClubMember.find({ userID, status: { $ne: 'rejected' } }).populate('clubID');
       const usedBlocks = new Set();
       for (const m of wednesdayMembers) {
@@ -707,18 +713,27 @@ app.post('/api/clubs/register', async (req, res) => {
       if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
         return res.status(400).json({ error: `周三最多选 ${WEDNESDAY_BLOCK_LIMIT} 个时段，您已占 ${usedBlocks.size} 个，该社团占 ${newBlocks.length} 个` });
       }
-    } else {
-      const alreadyIn = await ClubMember.findOne({ userID, clubID: club._id, status: { $ne: 'rejected' } });
-      if (alreadyIn) return res.status(400).json({ error: '您已报名该日常社团' });
     }
     
     if (club.capacity) {
       const currentMemberCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
       if (currentMemberCount >= club.capacity) return res.status(400).json({ error: '该社团人数已满，无法报名' });
     }
-    
-    const member = await ClubMember.create({ userID, clubID: club._id, status: 'pending' });
-    
+
+    let member;
+    if (existing && existing.status === 'rejected') {
+      existing.status = 'pending';
+      await existing.save();
+      member = existing;
+    } else {
+      try {
+        member = await ClubMember.create({ userID, clubID: club._id, status: 'pending' });
+      } catch (createErr) {
+        if (createErr.code === 11000) return res.status(400).json({ error: '您已申请该社团，请勿重复提交' });
+        throw createErr;
+      }
+    }
+
     if (club) io.emit('notification_update', { userID: club.founderID });
     
     const memberObj = member.toObject();
@@ -1289,16 +1304,20 @@ app.get('/api/audit/status/:userID', async (req, res) => {
         : Promise.resolve([])
     ]);
     
-    // 批量查询所有申请者的用户信息（避免N+1查询，只查询必要字段）
+    // 批量查询所有申请者的用户信息及社团名称
     const approvalUserIDs = [...new Set(joinApprovals.map(a => a.userID))];
-    const approvalUsers = approvalUserIDs.length > 0
-      ? await User.find({ userID: { $in: approvalUserIDs } }).select('name class userID').lean()
-      : [];
+    const approvalClubIDs = [...new Set(joinApprovals.map(a => a.clubID).filter(Boolean))];
+    const [approvalUsers, approvalClubs] = await Promise.all([
+      approvalUserIDs.length > 0 ? User.find({ userID: { $in: approvalUserIDs } }).select('name class userID').lean() : [],
+      approvalClubIDs.length > 0 ? Club.find({ _id: { $in: approvalClubIDs } }).select('name').lean() : []
+    ]);
     const userMap = new Map(approvalUsers.map(u => [u.userID, u]));
+    const clubMap = new Map(approvalClubs.map(c => [c._id.toString(), c.name]));
     
-    // 构建社团加入申请结果
+    // 构建社团加入申请结果（含社团名称）
     const myClubJoinApprovals = joinApprovals.map((approval) => {
       const approvalUser = userMap.get(approval.userID);
+      const clubName = clubMap.get(approval.clubID?.toString?.() || approval.clubID);
       return {
         ...approval,
         id: approval._id.toString(),
@@ -1306,7 +1325,8 @@ app.get('/api/audit/status/:userID', async (req, res) => {
           name: approvalUser.name,
           class: approvalUser.class,
           userID: approvalUser.userID
-        } : null
+        } : null,
+        Club: clubName ? { name: clubName } : null
       };
     });
     
@@ -1783,6 +1803,7 @@ app.get('/api/clubs/:id/members', async (req, res) => {
     
     res.json({
       clubName: club.name,
+      founderID: club.founderID || '',
       members: membersWithUserInfo.map((member, index) => ({
         ...member,
         index: index + 1
@@ -1790,6 +1811,38 @@ app.get('/api/clubs/:id/members', async (req, res) => {
     });
   } catch (e) {
     console.error('获取成员列表失败:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 社长/创建人踢出成员（仅创建者或核心成员可操作）
+app.post('/api/clubs/:id/kick-member', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { targetUserID, operatorID } = req.body;
+    if (!operatorID || !targetUserID) return res.status(400).json({ error: '缺少 operatorID 或 targetUserID' });
+
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+
+    const isFounder = club.founderID === operatorID;
+    const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
+    const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
+    if (!isFounder && !isCoreMember && !isAdmin) return res.status(403).json({ error: '仅社长、核心成员或管理员可踢出成员' });
+
+    if (targetUserID === club.founderID) return res.status(400).json({ error: '不能踢出社长本人' });
+
+    const member = await ClubMember.findOne({ userID: targetUserID, clubID: club._id, status: 'approved' });
+    if (!member) return res.status(404).json({ error: '该用户不是本社团成员' });
+
+    await ClubMember.deleteOne({ userID: targetUserID, clubID: club._id });
+    io.emit('notification_update', { userID: targetUserID });
+    res.json({ success: true });
+  } catch (e) {
+    console.error('踢出成员失败:', e);
     res.status(500).json({ error: e.message });
   }
 });

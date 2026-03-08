@@ -73,12 +73,13 @@ const ActivitySchema = new mongoose.Schema({
   paymentQRCode: { type: String } // 支付二维码文件名（微信/支付宝）
 }, { timestamps: true });
 
-// 社团成员模型
+// 社团成员模型（同一用户对同一社团只能有一条记录，被拒绝后可再次申请会更新该记录）
 const ClubMemberSchema = new mongoose.Schema({
   userID: { type: String, required: true },
   clubID: { type: mongoose.Schema.Types.ObjectId, ref: 'Club', required: true },
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }
 }, { timestamps: true });
+ClubMemberSchema.index({ userID: 1, clubID: 1 }, { unique: true });
 
 // 活动报名模型
 const ActivityRegistrationSchema = new mongoose.Schema({

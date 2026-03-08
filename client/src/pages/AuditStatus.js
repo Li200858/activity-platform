@@ -615,7 +615,7 @@ function AuditStatus({ user }) {
                 <div key={j.id} className="bg-gray-50 p-4 rounded-xl flex justify-between items-center border border-gray-100">
                   <div>
                     <p className="font-bold text-gray-800">{j.User?.name}</p>
-                    <p className="text-[10px] text-gray-400">{j.User?.class} · {t('audit.applyJoinClub')}</p>
+                    <p className="text-[10px] text-gray-400">{j.User?.class} · {j.Club?.name ? `申请加入「${j.Club.name}」` : t('audit.applyJoinClub')}</p>
                   </div>
                   <div className="flex gap-2">
                     <button onClick={() => handleApprove('clubJoin', j.id, 'approved')} className="bg-green-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold">{t('audit.approve')}</button>
