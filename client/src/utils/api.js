@@ -25,9 +25,9 @@ export const useAuth = () => {
     return userData;
   };
 
-  // 登录逻辑：姓名、班级、ID
-  const login = async (name, userClass, userID) => {
-    const res = await axios.post(`${API_BASE}/user/login`, { name, class: userClass, userID });
+  // 登录逻辑：姓名、班级、ID，super_admin 需额外传 password
+  const login = async (name, userClass, userID, password) => {
+    const res = await axios.post(`${API_BASE}/user/login`, { name, class: userClass, userID, password });
     const userData = res.data;
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));

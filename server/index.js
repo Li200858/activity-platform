@@ -118,9 +118,18 @@ app.post('/api/user/register', async (req, res) => {
 
 app.post('/api/user/login', async (req, res) => {
   try {
-    const { userID, name, class: userClass } = req.body;
+    const { userID, name, class: userClass, password } = req.body;
     const user = await User.findOne({ userID });
     if (!user || user.name !== name || user.class !== userClass) return res.status(401).json({ error: '信息不匹配' });
+
+    // super_admin 需要额外输入密码
+    if (user.role === 'super_admin') {
+      const expectedPassword = process.env.SUPER_ADMIN_PASSWORD;
+      if (!expectedPassword) return res.status(500).json({ error: '超级管理员密码未配置，请联系管理员设置 SUPER_ADMIN_PASSWORD 环境变量' });
+      if (!password) return res.status(401).json({ error: '超级管理员需要输入密码', requirePassword: true });
+      if (password !== expectedPassword) return res.status(401).json({ error: '密码错误' });
+    }
+
     const userObj = user.toObject();
     userObj.id = user._id.toString();
     res.json(userObj);

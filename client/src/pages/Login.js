@@ -9,6 +9,8 @@ function Login({ onLogin, onRegister }) {
   const [userClass, setUserClass] = useState('');
   const [userID, setUserID] = useState('');
   const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [password, setPassword] = useState('');
   const [showRecovery, setShowRecovery] = useState(false);
   const [recovery, setRecovery] = useState({ name: '', class: '', email: '' });
   const [recoveryMessage, setRecoveryMessage] = useState('');
@@ -23,13 +25,19 @@ function Login({ onLogin, onRegister }) {
         }
       } else {
         if (name && userClass && userID) {
-          await onLogin(name, userClass, userID);
+          await onLogin(name, userClass, userID, showPassword ? password : undefined);
         } else {
           setError(t('login.error'));
         }
       }
     } catch (err) {
-      setError(err.response?.data?.error || (t('common.fail') + ', ' + (t('login.error') || '')));
+      const data = err.response?.data;
+      if (data?.requirePassword) {
+        setShowPassword(true);
+        setError(data.error || '超级管理员需要输入密码');
+      } else {
+        setError(data?.error || (t('common.fail') + ', ' + (t('login.error') || '')));
+      }
     }
   };
 
@@ -57,13 +65,13 @@ function Login({ onLogin, onRegister }) {
       <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
         <div className="flex mb-8 bg-gray-100 p-1 rounded-lg">
           <button 
-            onClick={() => { setMode('login'); setError(''); }}
+            onClick={() => { setMode('login'); setError(''); setShowPassword(false); setPassword(''); }}
             className={`flex-1 py-2 rounded-md transition-all ${mode === 'login' ? 'bg-white shadow-sm text-blue-600 font-bold' : 'text-gray-500'}`}
           >
             {t('login.login')}
           </button>
           <button 
-            onClick={() => { setMode('register'); setError(''); }}
+            onClick={() => { setMode('register'); setError(''); setShowPassword(false); setPassword(''); }}
             className={`flex-1 py-2 rounded-md transition-all ${mode === 'register' ? 'bg-white shadow-sm text-blue-600 font-bold' : 'text-gray-500'}`}
           >
             {t('login.register')}
@@ -100,17 +108,32 @@ function Login({ onLogin, onRegister }) {
             />
           </div>
           {mode === 'login' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{t('login.idLabel')}</label>
-              <input 
-                type="text" 
-                value={userID} 
-                onChange={(e) => setUserID(e.target.value)} 
-                className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                placeholder={t('login.idPlaceholder')}
-                required
-              />
-            </div>
+            <>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">{t('login.idLabel')}</label>
+                <input 
+                  type="text" 
+                  value={userID} 
+                  onChange={(e) => setUserID(e.target.value)} 
+                  className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                  placeholder={t('login.idPlaceholder')}
+                  required
+                />
+              </div>
+              {showPassword && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">超级管理员密码</label>
+                  <input 
+                    type="password" 
+                    value={password} 
+                    onChange={(e) => setPassword(e.target.value)} 
+                    className="w-full border border-gray-300 rounded-lg p-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                    placeholder="请输入密码"
+                    required
+                  />
+                </div>
+              )}
+            </>
           )}
           
           <button type="submit" className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition-colors mt-6">
