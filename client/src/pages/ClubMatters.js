@@ -650,10 +650,8 @@ function ClubMatters({ user }) {
                         {(club.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                           <button 
                             onClick={() => {
-                              const link = document.createElement('a');
                               const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-                              link.href = `${apiBase}/api/clubs/${club.id}/export?userID=${user.userID}`;
-                              link.click();
+                              window.open(`${apiBase}/api/clubs/${club.id}/export?userID=${user.userID}`, '_blank', 'noopener');
                             }}
                             className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
                           >
@@ -1714,10 +1712,8 @@ function ClubMatters({ user }) {
                 {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                   <button 
                     onClick={() => {
-                      const link = document.createElement('a');
                       const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-                      link.href = `${apiBase}/api/clubs/${selectedClubDetail.id}/export?userID=${user.userID}`;
-                      link.click();
+                      window.open(`${apiBase}/api/clubs/${selectedClubDetail.id}/export?userID=${user.userID}`, '_blank', 'noopener');
                     }}
                     className="px-6 py-3 bg-green-600 text-white rounded-2xl font-black hover:bg-green-700 transition-all"
                   >

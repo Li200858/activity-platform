@@ -1654,7 +1654,8 @@ app.get('/api/clubs/:id/export', async (req, res) => {
 
     const isAdmin = user.role === 'admin' || user.role === 'super_admin';
     const isFounder = club.founderID === userID;
-    if (!isAdmin && !isFounder) return res.status(403).json({ error: '没有权限下载' });
+    const isCoreMember = (club.coreMemberIDs || []).includes(userID);
+    if (!isAdmin && !isFounder && !isCoreMember) return res.status(403).json({ error: '没有权限下载' });
 
     const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).sort({ createdAt: 1 });
     const memberUserIDs = members.map(m => m.userID);
@@ -1675,11 +1676,12 @@ app.get('/api/clubs/:id/export', async (req, res) => {
 
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, '社团成员');
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'members');
 
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(club.name)}_成员名单.xlsx"`);
+    res.setHeader('Content-Length', String(buffer.length));
+    res.setHeader('Content-Disposition', 'attachment; filename="club_members.xlsx"');
     res.send(buffer);
   } catch (e) {
     console.error('导出社团成员Excel失败:', e);
