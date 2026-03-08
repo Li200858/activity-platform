@@ -1463,6 +1463,54 @@ app.post('/api/audit/approve', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 批量审核（仅支持 clubJoin、activityReg，供社团社长/活动组织者一键通过）
+app.post('/api/audit/approve-batch', async (req, res) => {
+  try {
+    const { type, ids, status, operatorID } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids 必须为非空数组' });
+    if (type !== 'clubJoin' && type !== 'activityReg') return res.status(400).json({ error: '批量审核仅支持 clubJoin 或 activityReg' });
+
+    const op = await User.findOne({ userID: operatorID });
+    if (!op) return res.status(401).json({ error: '用户不存在' });
+
+    let successCount = 0;
+    for (const id of ids) {
+      try {
+        if (type === 'clubJoin') {
+          const item = await ClubMember.findById(id).populate('clubID');
+          if (!item || item.status !== 'pending') continue;
+          const club = item.clubID;
+          if (!club) continue;
+          const isAdmin = op.role === 'admin' || op.role === 'super_admin';
+          const isFounder = club.founderID === operatorID;
+          const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
+          if (!isAdmin && !isFounder && !isCoreMember) continue;
+          item.status = status;
+          await item.save();
+          await Notification.create({ userID: item.userID, type: 'status_update', relatedID: id.toString() });
+          io.emit('notification_update', { userID: item.userID });
+          successCount++;
+        } else if (type === 'activityReg') {
+          const item = await ActivityRegistration.findById(id);
+          if (!item || item.status !== 'pending') continue;
+          const activity = await Activity.findById(item.activityID);
+          if (!activity || activity.organizerID !== operatorID) continue;
+          item.status = status;
+          if (activity && activity.hasFee && status === 'approved') {
+            item.paymentStatus = item.paymentProof ? 'paid' : 'unpaid';
+          }
+          await item.save();
+          await Notification.create({ userID: item.userID, type: 'status_update', relatedID: id.toString() });
+          io.emit('notification_update', { userID: item.userID });
+          successCount++;
+        }
+      } catch (_) { /* 跳过单个失败 */ }
+    }
+    res.json({ success: true, count: successCount });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/feedback', async (req, res) => {
   try {
     const { authorID, operatorID } = req.body;

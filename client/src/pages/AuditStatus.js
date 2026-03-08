@@ -77,6 +77,25 @@ function AuditStatus({ user }) {
     }
   };
 
+  const handleApproveAll = async (type) => {
+    const list = type === 'clubJoin' ? data.myClubJoinApprovals : data.myActivityRegApprovals;
+    const ids = (list || []).map(x => x.id).filter(Boolean);
+    if (ids.length === 0) {
+      alert(t('audit.noApplications'));
+      return;
+    }
+    if (!window.confirm('确定一键通过全部 ' + ids.length + ' 条申请？')) return;
+    try {
+      const res = await api.post('/audit/approve-batch', { type, ids, status: 'approved', operatorID: user.userID });
+      await fetchAuditStatus();
+      setSelectedDetail(null);
+      alert(`已通过 ${res.data?.count ?? ids.length} 条申请`);
+    } catch (e) {
+      const errorMsg = e.response?.data?.error || e.message || '操作失败，请稍后重试';
+      alert(errorMsg);
+    }
+  };
+
   const handleSearchUser = async () => {
     if (!searchQuery || !searchQuery.trim()) {
       setSearchResults([]);
@@ -566,7 +585,12 @@ function AuditStatus({ user }) {
         <div className="grid md:grid-cols-2 gap-10">
           {/* 我收到的报名申请 (作为活动组织者) */}
           <section>
-            <h3 className="text-xs font-bold text-gray-400 mb-4 uppercase tracking-widest">{t('audit.receivedActivityReg')}</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t('audit.receivedActivityReg')}</h3>
+              {data.myActivityRegApprovals.length > 0 && (
+                <button onClick={() => handleApproveAll('activityReg')} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-green-700">{t('audit.approveAll')}</button>
+              )}
+            </div>
             <div className="space-y-3">
               {data.myActivityRegApprovals.length === 0 && <p className="text-gray-300 text-sm">{t('audit.noActivityReg')}</p>}
               {data.myActivityRegApprovals.map(r => (
@@ -608,7 +632,12 @@ function AuditStatus({ user }) {
 
           {/* 我收到的社团加入申请 (作为社团创建者) */}
           <section>
-            <h3 className="text-xs font-bold text-gray-400 mb-4 uppercase tracking-widest">{t('audit.receivedClubJoin')}</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xs font-bold text-gray-400 uppercase tracking-widest">{t('audit.receivedClubJoin')}</h3>
+              {data.myClubJoinApprovals.length > 0 && (
+                <button onClick={() => handleApproveAll('clubJoin')} className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-green-700">{t('audit.approveAll')}</button>
+              )}
+            </div>
             <div className="space-y-3">
               {data.myClubJoinApprovals.length === 0 && <p className="text-gray-300 text-sm">{t('audit.noClubJoin')}</p>}
               {data.myClubJoinApprovals.map(j => (
