@@ -152,6 +152,7 @@ function Login({ onLogin, onRegister }) {
           </button>
           {showRecovery && (
             <form onSubmit={handleRecoverySubmit} className="mt-3 space-y-3 text-xs">
+              <p className="text-amber-600 font-medium mb-1">⚠️ {t('login.forgotIdHint')}</p>
               <p className="text-gray-500 mb-1">{t('login.forgotIdDesc')}</p>
               <div className="grid grid-cols-2 gap-2">
                 <input

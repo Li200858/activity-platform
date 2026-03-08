@@ -84,12 +84,20 @@ function AuditStatus({ user }) {
       alert(t('audit.noApplications'));
       return;
     }
-    if (!window.confirm('确定一键通过全部 ' + ids.length + ' 条申请？')) return;
+    const confirmMsg = type === 'clubJoin'
+      ? (t('audit.approveAllConfirm') || '确定一键通过全部 {n} 条申请？人数已满的社团将自动拒绝。').replace('{n}', ids.length)
+      : '确定一键通过全部 ' + ids.length + ' 条申请？';
+    if (!window.confirm(confirmMsg)) return;
     try {
       const res = await api.post('/audit/approve-batch', { type, ids, status: 'approved', operatorID: user.userID });
       await fetchAuditStatus();
       setSelectedDetail(null);
-      alert(`已通过 ${res.data?.count ?? ids.length} 条申请`);
+      const approved = res.data?.count ?? 0;
+      const rejectedFull = res.data?.rejectedFull ?? 0;
+      const msg = rejectedFull > 0
+        ? `已通过 ${approved} 条，因人数已满自动拒绝 ${rejectedFull} 条`
+        : `已通过 ${approved} 条申请`;
+      alert(msg);
     } catch (e) {
       const errorMsg = e.response?.data?.error || e.message || '操作失败，请稍后重试';
       alert(errorMsg);

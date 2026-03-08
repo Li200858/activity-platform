@@ -157,12 +157,17 @@ app.post('/api/id-recovery', async (req, res) => {
   try {
     const { name, class: userClass, email } = req.body;
     if (!name || !userClass || !email) return res.status(400).json({ error: '缺少姓名、班级或邮箱' });
-    const user = await User.findOne({ name, class: userClass });
+    // 同一姓名+班级+邮箱只能申请一次
+    const n = name.trim(), c = userClass.trim(), e = email.trim().toLowerCase();
+    const allSame = await IDRecoveryRequest.find({ name: n, class: c }).lean();
+    const existing = allSame.find(r => r.email && r.email.toLowerCase() === e);
+    if (existing) return res.status(400).json({ error: '该组合已申请过找回ID，请勿重复提交' });
+    const user = await User.findOne({ name: n, class: c });
     const userIDFound = user ? user.userID : null;
     const reqDoc = await IDRecoveryRequest.create({
-      name,
-      class: userClass,
-      email,
+      name: n,
+      class: c,
+      email: e,
       userIDFound,
       status: 'pending'
     });
@@ -1451,11 +1456,24 @@ app.post('/api/audit/approve', async (req, res) => {
       targetUserID = item.userID; 
     }
     else if (type === 'clubJoin') { 
-      const item = await ClubMember.findById(id);
+      const item = await ClubMember.findById(id).populate('clubID');
       if (!item) return res.status(404).json({ error: '申请不存在' });
-      item.status = status; 
+      const club = item.clubID;
+      if (!club) return res.status(404).json({ error: '社团不存在' });
+      // 若点击通过但社团人数已满，则自动拒绝
+      let finalStatus = status;
+      if (status === 'approved' && club.capacity != null) {
+        const currentCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
+        if (currentCount >= club.capacity) finalStatus = 'rejected';
+      }
+      item.status = finalStatus; 
       await item.save(); 
-      targetUserID = item.userID; 
+      targetUserID = item.userID;
+      if (finalStatus === 'rejected' && status === 'approved') {
+        await Notification.create({ userID: targetUserID, type: 'status_update', relatedID: id.toString() });
+        io.emit('notification_update', { userID: targetUserID });
+        return res.status(400).json({ error: '该社团人数已满，已自动拒绝' });
+      }
     }
     await Notification.create({ userID: targetUserID, type: 'status_update', relatedID: id.toString() });
     io.emit('notification_update', { userID: targetUserID });
@@ -1475,6 +1493,7 @@ app.post('/api/audit/approve-batch', async (req, res) => {
     if (!op) return res.status(401).json({ error: '用户不存在' });
 
     let successCount = 0;
+    let rejectedCount = 0; // 因人数已满被拒绝的数量
     for (const id of ids) {
       try {
         if (type === 'clubJoin') {
@@ -1486,11 +1505,15 @@ app.post('/api/audit/approve-batch', async (req, res) => {
           const isFounder = club.founderID === operatorID;
           const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
           if (!isAdmin && !isFounder && !isCoreMember) continue;
-          item.status = status;
+          // 计算当前已通过人数，若已满则拒绝
+          const currentCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
+          const finalStatus = (club.capacity != null && currentCount >= club.capacity) ? 'rejected' : status;
+          item.status = finalStatus;
           await item.save();
           await Notification.create({ userID: item.userID, type: 'status_update', relatedID: id.toString() });
           io.emit('notification_update', { userID: item.userID });
-          successCount++;
+          if (finalStatus === 'approved') successCount++;
+          else if (finalStatus === 'rejected' && club.capacity != null && currentCount >= club.capacity) rejectedCount++;
         } else if (type === 'activityReg') {
           const item = await ActivityRegistration.findById(id);
           if (!item || item.status !== 'pending') continue;
@@ -1507,7 +1530,7 @@ app.post('/api/audit/approve-batch', async (req, res) => {
         }
       } catch (_) { /* 跳过单个失败 */ }
     }
-    res.json({ success: true, count: successCount });
+    res.json({ success: true, count: successCount, rejectedFull: type === 'clubJoin' ? rejectedCount : undefined });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
