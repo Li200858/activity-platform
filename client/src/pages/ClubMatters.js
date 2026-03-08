@@ -1161,7 +1161,7 @@ function ClubMatters({ user }) {
                         {m.name}
                         {m.englishName && ` / ${m.englishName}`}
                       </span>
-                      <span className="text-gray-400 text-xs">{m.class} · {m.userID}</span>
+                      <span className="text-gray-400 text-xs">{m.class}</span>
                     </label>
                   ))}
                 </div>
@@ -1395,7 +1395,6 @@ function ClubMatters({ user }) {
                           {m.name}
                           {m.englishName && ` / ${m.englishName}`}
                         </span>
-                        <span className="text-gray-400 text-xs font-mono">ID: {m.userID}</span>
                         {(selectedClubDetail.founderID === user.userID || user.role === 'admin' || user.role === 'super_admin') && selectedClubDetail.founderID !== m.userID && (
                           <button type="button" onClick={() => removeCoreMember(m.userID)} className="text-red-500 text-xs font-bold hover:underline">移除</button>
                         )}
@@ -1777,7 +1776,6 @@ function ClubMatters({ user }) {
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">序号</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">姓名</th>
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">班级</th>
-                    <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">用户ID</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-200">
@@ -1789,7 +1787,6 @@ function ClubMatters({ user }) {
                         {m.englishName && ` / ${m.englishName}`}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">{m.class}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 font-mono">{m.userID}</td>
                     </tr>
                   ))}
                 </tbody>
