@@ -46,11 +46,23 @@ function ClubMatters({ user }) {
   const [dailyCollapsed, setDailyCollapsed] = useState(false); // 我的社团状态 - 日常社团折叠
   const [wednesdayConfirmed, setWednesdayConfirmed] = useState(false); // 周三社团是否已最终确认
   const [showFinalConfirmModal, setShowFinalConfirmModal] = useState(false); // 最终确认弹窗
+  const [managedClubs, setManagedClubs] = useState([]); // 我管理的社团（社长或核心成员）
 
   useEffect(() => {
     fetchClubs();
     fetchMyClub();
-  }, []);
+    if (user?.userID) fetchManagedClubs();
+  }, [user?.userID]);
+
+  const fetchManagedClubs = async () => {
+    if (!user?.userID) return;
+    try {
+      const res = await api.get(`/clubs/managed/${user.userID}?operatorID=${encodeURIComponent(user.userID)}`);
+      setManagedClubs(res.data || []);
+    } catch (e) {
+      setManagedClubs([]);
+    }
+  };
 
   useEffect(() => {
     if (view === 'rotation' && user?.userID) {
@@ -573,6 +585,23 @@ function ClubMatters({ user }) {
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
         {view === 'menu' && (
           <>
+            {/* 我管理的社团（社长或核心成员） */}
+            {managedClubs.length > 0 && (
+              <div className="mb-8 p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                <h3 className="text-sm font-bold text-amber-800 mb-3">{isEn ? 'Clubs I Manage' : '我管理的社团'}</h3>
+                <div className="flex flex-wrap gap-2">
+                  {managedClubs.map(c => (
+                    <button
+                      key={c.id}
+                      onClick={() => setSelectedClubDetail(c)}
+                      className="px-4 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-xl font-bold text-sm transition-colors"
+                    >
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
               <button 
                 onClick={() => {
@@ -1762,7 +1791,7 @@ function ClubMatters({ user }) {
 
       {/* 成员列表视图 */}
       {view === 'members' && members && (() => {
-        const membersClub = (myClubs || []).find(c => c.id === membersClubId) || (clubs || []).find(c => c.id === membersClubId) || (selectedClubDetail?.id === membersClubId ? selectedClubDetail : null);
+        const membersClub = (managedClubs || []).find(c => c.id === membersClubId) || (myWednesdayClubs || []).find(m => m.Club?.id === membersClubId)?.Club || (myDailyClubs || []).find(m => m.Club?.id === membersClubId)?.Club || (clubs || []).find(c => c.id === membersClubId) || (selectedClubDetail?.id === membersClubId ? selectedClubDetail : null);
         return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-6">

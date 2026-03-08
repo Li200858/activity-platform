@@ -462,6 +462,43 @@ app.get('/api/clubs/approved', async (req, res) => {
 
 const clubHasWednesday = (c) => (c || 'wednesday') === 'wednesday' || (c === 'both');
 
+// 我管理的社团（社长或核心成员）
+app.get('/api/clubs/managed/:userID', async (req, res) => {
+  try {
+    const userID = req.params.userID;
+    const operatorID = req.query.operatorID;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op) return res.status(401).json({ error: '用户不存在' });
+    if (operatorID !== userID && op.role !== 'admin' && op.role !== 'super_admin') return res.status(403).json({ error: '只能查看自己的' });
+    const managedClubs = await Club.find({ $or: [{ founderID: userID }, { coreMemberIDs: userID }], status: 'approved' }).lean();
+    if (managedClubs.length === 0) return res.json([]);
+    const allCoreIDs = [...new Set(managedClubs.flatMap(c => (c.coreMemberIDs || []).concat(c.founderID ? [c.founderID] : [])))];
+    const coreUsers = allCoreIDs.length ? await User.find({ userID: { $in: allCoreIDs } }).select('userID name englishName class').lean() : [];
+    const userMap = new Map(coreUsers.map(u => [u.userID, u]));
+    const result = await Promise.all(managedClubs.map(async (plain) => {
+      const memberCount = await ClubMember.countDocuments({ clubID: plain._id, status: 'approved' });
+      const ids = [...new Set((plain.coreMemberIDs || []).concat(plain.founderID ? [plain.founderID] : []))];
+      const founder = plain.founderID ? (userMap.get(plain.founderID) || await User.findOne({ userID: plain.founderID }).select('name englishName class').lean()) : null;
+      return {
+        ...plain,
+        id: plain._id.toString(),
+        memberCount,
+        founderName: founder?.name || null,
+        founderEnglishName: founder?.englishName || null,
+        founderClass: founder?.class || null,
+        coreMembers: ids.map(uid => ({
+          userID: uid,
+          name: (userMap.get(uid) || {}).name || '未知',
+          englishName: (userMap.get(uid) || {}).englishName || ''
+        })),
+        coreMemberIDs: plain.coreMemberIDs || []
+      };
+    }));
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/clubs/my/:userID', async (req, res) => {
   try {
     const userID = req.params.userID;
@@ -1287,6 +1324,7 @@ app.get('/api/audit/status/:userID', async (req, res) => {
       myOwnClubJoinStatus,
       myActs,
       myClubs,
+      clubsWhereCanApproveJoin,
       ...adminData
     ] = await Promise.all([
       Club.find({ founderID: userID }).select('name status founderID createdAt').lean(), // lean()返回普通对象，更快
@@ -1295,6 +1333,7 @@ app.get('/api/audit/status/:userID', async (req, res) => {
       ClubMember.find({ userID }).select('userID clubID status createdAt').lean(), // 移除populate
       Activity.find({ organizerID: userID }).select('_id').lean(), // 只需要ID
       Club.find({ founderID: userID }).select('_id').lean(), // 只需要ID
+      Club.find({ $or: [{ founderID: userID }, { coreMemberIDs: userID }] }).select('_id').lean(), // 社长或核心成员可审核加入的社团
       // 管理员数据：只查询必要字段
       isAdmin ? Club.find({ status: 'pending' }).select('name status founderID actualLeaderName createdAt type blocks intro content location time duration weeks capacity contact file').lean() : Promise.resolve([]),
       isAdmin ? Activity.find({ status: 'pending' }).select('name status organizerID createdAt').lean() : Promise.resolve([]),
@@ -1306,7 +1345,7 @@ app.get('/api/audit/status/:userID', async (req, res) => {
     const allActivityRegs = adminData[2] || [];
     
     const myActIDs = myActs.map(a => a._id);
-    const myClubIDs = myClubs.map(c => c._id);
+    const myClubIDs = (clubsWhereCanApproveJoin || []).map(c => c._id); // 社长或核心成员可审核的社团
     
     // 并行查询活动报名申请和社团加入申请（只查询必要字段）
     const [myActivityRegApprovals, joinApprovals] = await Promise.all([
