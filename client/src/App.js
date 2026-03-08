@@ -342,7 +342,8 @@ function App() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
             <h3 className="font-bold text-gray-800 mb-3">{user?.hasPin ? (isEn ? 'Change PIN' : '修改 PIN') : (isEn ? 'Set PIN' : '设置 PIN')}</h3>
-            <p className="text-xs text-gray-500 mb-3">{isEn ? '4-6 digits, leave empty to remove' : '4-6 位数字，留空则移除'}</p>
+            <p className="text-xs text-gray-500 mb-1">{isEn ? '4-6 digits, leave empty to remove' : '4-6 位数字，留空则移除'}</p>
+            <p className="text-xs text-amber-600 mb-3">{isEn ? 'If set, PIN required on next login; if left empty, not required.' : '若设置 PIN 则下次登录需输入；留空则不需要。'}</p>
             <input
               type="password"
               inputMode="numeric"
