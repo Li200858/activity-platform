@@ -117,6 +117,18 @@ function App() {
     }
   };
 
+  const handleResetPin = async (targetUserID, targetName) => {
+    if (!window.confirm(isEn ? `Clear PIN for "${targetName}"? They can then login with name+class+ID only.` : `确定清除「${targetName}」的 PIN？清除后该用户可凭姓名+班级+ID 登录。`)) return;
+    try {
+      await api.post('/admin/reset-pin', { targetUserID, operatorID: user.userID });
+      alert(isEn ? 'PIN cleared' : '已清除 PIN');
+      const res = await api.get(`/search?q=${searchQuery}&operatorID=${user.userID}`);
+      setSearchResults(res.data);
+    } catch (err) {
+      alert(err.response?.data?.error || (isEn ? 'Failed' : '操作失败'));
+    }
+  };
+
   if (!user) {
     return <Login onLogin={login} onRegister={register} />;
   }
@@ -261,6 +273,14 @@ function App() {
                         className={`text-[10px] px-4 py-2 rounded-xl font-black transition-all ${u.role === 'user' ? 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
                       >
                         {u.role === 'user' ? t('app.setAdmin') : t('app.cancelRole')}
+                      </button>
+                    )}
+                    {user.role === 'super_admin' && u.userID !== user.userID && (
+                      <button 
+                        onClick={() => handleResetPin(u.userID, u.name)} 
+                        className="text-[10px] px-4 py-2 rounded-xl font-black bg-amber-50 text-amber-600 hover:bg-amber-100 transition-all"
+                      >
+                        {isEn ? 'Clear PIN' : '清除PIN'}
                       </button>
                     )}
                     {user.role === 'super_admin' && u.role === 'user' && u.userID !== user.userID && (

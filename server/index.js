@@ -1769,6 +1769,21 @@ app.get('/api/admin/users/search', async (req, res) => {
   }
 });
 
+// 超级管理员清除用户 PIN（用户忘记 PIN 时使用）
+app.post('/api/admin/reset-pin', async (req, res) => {
+  try {
+    const { targetUserID, operatorID } = req.body;
+    if (!operatorID || !targetUserID) return res.status(400).json({ error: '缺少参数' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || op.role !== 'super_admin') return res.status(403).json({ error: '仅超级管理员可清除 PIN' });
+    const target = await User.findOne({ userID: targetUserID });
+    if (!target) return res.status(404).json({ error: '用户不存在' });
+    target.pinHash = null;
+    await target.save();
+    res.json({ success: true, message: '已清除 PIN，该用户可凭姓名+班级+ID 登录' });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.post('/api/admin/set-role', async (req, res) => {
   try {
     const { operatorID, targetUserID, role } = req.body;

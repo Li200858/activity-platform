@@ -141,6 +141,17 @@ function AuditStatus({ user }) {
     }
   };
 
+  const handleResetPin = async (targetUserID, targetName) => {
+    if (!window.confirm(`确定清除「${targetName}」的 PIN？清除后该用户可凭姓名+班级+ID 登录。`)) return;
+    try {
+      await api.post('/admin/reset-pin', { targetUserID, operatorID: user.userID });
+      alert('已清除 PIN');
+      handleSearchUser();
+    } catch (err) {
+      alert(err.response?.data?.error || '操作失败');
+    }
+  };
+
   const handleVenueRequestStatus = async (rid, status) => {
     try {
       await api.put(`/clubs/venue-requests/${rid}`, { userID: user.userID, status });
@@ -359,6 +370,9 @@ function AuditStatus({ user }) {
                       </span>
                     </div>
                     <div className="flex items-center gap-2">
+                      {u.userID !== user.userID && (
+                        <button onClick={() => handleResetPin(u.userID, u.name)} className="text-xs bg-amber-50 text-amber-600 border border-amber-200 px-4 py-2 rounded-lg font-bold hover:bg-amber-100 transition-all">清除PIN</button>
+                      )}
                       {u.role === 'user' && (
                         <>
                           <button onClick={() => handleSetRole(u.userID, 'admin')} className="text-xs bg-white border border-red-200 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all">{t('app.setAdmin')}</button>
