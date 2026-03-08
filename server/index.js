@@ -1638,6 +1638,55 @@ app.get('/api/clubs/document', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 下载社团成员Excel
+app.get('/api/clubs/:id/export', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID } = req.query;
+
+    if (!userID) return res.status(400).json({ error: '缺少userID参数' });
+
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+
+    const user = await User.findOne({ userID });
+    if (!user) return res.status(401).json({ error: '用户不存在' });
+
+    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+    const isFounder = club.founderID === userID;
+    if (!isAdmin && !isFounder) return res.status(403).json({ error: '没有权限下载' });
+
+    const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).sort({ createdAt: 1 });
+    const memberUserIDs = members.map(m => m.userID);
+    const users = memberUserIDs.length ? await User.find({ userID: { $in: memberUserIDs } }).select('userID name englishName class').lean() : [];
+    const userMap = new Map(users.map(u => [u.userID, u]));
+
+    const data = members.length > 0
+      ? members.map((m, index) => {
+          const u = userMap.get(m.userID);
+          return {
+            '序号': index + 1,
+            '姓名': u ? u.name : '',
+            '英文名': u ? (u.englishName || '') : '',
+            '班级': u ? u.class : ''
+          };
+        })
+      : [{ '序号': '', '姓名': '暂无成员', '英文名': '', '班级': '' }];
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, '社团成员');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(club.name)}_成员名单.xlsx"`);
+    res.send(buffer);
+  } catch (e) {
+    console.error('导出社团成员Excel失败:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // 获取社团成员列表
 app.get('/api/clubs/:id/members', async (req, res) => {
   try {
