@@ -17,6 +17,10 @@ function AuditStatus({ user }) {
   const [venueClubSearchQuery, setVenueClubSearchQuery] = useState('');
   const [venueClubSearchFocused, setVenueClubSearchFocused] = useState(false);
   const [idRecoveryRequests, setIdRecoveryRequests] = useState([]);
+  const [usersClubSelections, setUsersClubSelections] = useState([]);
+  const [allUsersList, setAllUsersList] = useState([]);
+  const [showClubSelections, setShowClubSelections] = useState(false);
+  const [showAllUsers, setShowAllUsers] = useState(false);
 
   useEffect(() => {
     fetchAuditStatus();
@@ -117,6 +121,26 @@ function AuditStatus({ user }) {
       setVenueRequestsAll(res.data || []);
     } catch (err) {
       alert(err.response?.data?.error || '操作失败');
+    }
+  };
+
+  const fetchUsersClubSelections = async () => {
+    try {
+      const res = await api.get(`/admin/users-club-selections?operatorID=${encodeURIComponent(user.userID)}`);
+      setUsersClubSelections(res.data || []);
+      setShowClubSelections(true);
+    } catch (e) {
+      alert(e.response?.data?.error || '加载失败');
+    }
+  };
+
+  const fetchAllUsersList = async () => {
+    try {
+      const res = await api.get(`/admin/users/list?operatorID=${encodeURIComponent(user.userID)}`);
+      setAllUsersList(res.data || []);
+      setShowAllUsers(true);
+    } catch (e) {
+      alert(e.response?.data?.error || '加载失败');
     }
   };
 
@@ -244,6 +268,30 @@ function AuditStatus({ user }) {
             </section>
           </div>
 
+          {/* 管理员：查看所有用户社团选择 */}
+          {(user.role === 'admin' || user.role === 'super_admin') && (
+            <div className="mt-8 pt-6 border-t border-gray-100">
+              <h3 className="text-sm font-bold text-gray-700 mb-3">用户社团选择</h3>
+              {!showClubSelections ? (
+                <button onClick={fetchUsersClubSelections} className="px-4 py-2 bg-teal-600 text-white rounded-xl font-bold text-sm hover:bg-teal-700">加载全部用户社团选择</button>
+              ) : (
+                <div className="space-y-2 max-h-80 overflow-y-auto">
+                  {usersClubSelections.map(u => (
+                    <div key={u.userID} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-sm">
+                      <div className="font-bold text-gray-800">{u.name} <span className="text-gray-500 font-normal">· {u.class}</span></div>
+                      <div className="mt-1 text-xs text-gray-600">
+                        {u.wednesdayClubs?.length > 0 && <span>周三：{u.wednesdayClubs.map(c => c.name).join('、')}</span>}
+                        {u.wednesdayClubs?.length > 0 && u.dailyClubs?.length > 0 && ' · '}
+                        {u.dailyClubs?.length > 0 && <span>日常：{u.dailyClubs.map(c => c.name).join('、')}</span>}
+                        {(!u.wednesdayClubs?.length && !u.dailyClubs?.length) && <span className="text-gray-400">暂无社团</span>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* 超级管理员特有的用户管理 */}
           {user.role === 'super_admin' && (
             <div className="mt-12 pt-8 border-t-2 border-dashed border-gray-100">
@@ -296,6 +344,34 @@ function AuditStatus({ user }) {
                     </div>
                   </div>
                 ))}
+              </div>
+
+              {/* super_admin：全部用户列表（姓名、班级、ID） */}
+              <div className="mt-8 pt-6 border-t border-gray-100">
+                <h4 className="text-sm font-bold text-gray-700 mb-3">全部用户列表</h4>
+                {!showAllUsers ? (
+                  <button onClick={fetchAllUsersList} className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold text-sm hover:bg-purple-700">加载全部用户</button>
+                ) : (
+                  <div className="space-y-2 max-h-96 overflow-y-auto">
+                    <div className="grid grid-cols-4 gap-2 text-xs font-bold text-gray-500 pb-2 border-b">
+                      <span>姓名</span>
+                      <span>班级</span>
+                      <span>用户ID</span>
+                      <span>角色</span>
+                    </div>
+                    {allUsersList.map(u => (
+                      <div key={u.userID} className="grid grid-cols-4 gap-2 text-sm py-2 border-b border-gray-50 items-center">
+                        <span className="font-medium">{u.name}</span>
+                        <span className="text-gray-600">{u.class}</span>
+                        <span className="font-mono text-blue-600">{u.userID}</span>
+                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold ${
+                          u.role === 'super_admin' ? 'bg-purple-100 text-purple-600' :
+                          u.role === 'admin' ? 'bg-red-100 text-red-600' : 'bg-gray-100 text-gray-500'
+                        }`}>{u.role}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           )}

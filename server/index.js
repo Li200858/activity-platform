@@ -1612,6 +1612,53 @@ app.delete('/api/admin/users/:userID', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 管理员查看所有用户的社团选择（admin + super_admin）
+app.get('/api/admin/users-club-selections', async (req, res) => {
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可查看' });
+
+    const members = await ClubMember.find({ status: 'approved' }).populate('clubID', 'name category');
+    const allUsers = await User.find().select('userID name class').sort({ class: 1, name: 1 }).lean();
+    const userMap = new Map(allUsers.map(u => [u.userID, u]));
+
+    const result = allUsers.map(u => {
+      const myMembers = members.filter(m => m.userID === u.userID && m.clubID);
+      const wednesdayClubs = myMembers.filter(m => clubHasWednesday(m.clubID.category)).map(m => ({ id: m.clubID._id.toString(), name: m.clubID.name }));
+      const dailyClubs = myMembers.filter(m => m.clubID.category === 'daily').map(m => ({ id: m.clubID._id.toString(), name: m.clubID.name }));
+      return {
+        userID: u.userID,
+        name: u.name || '',
+        class: u.class || '',
+        wednesdayClubs,
+        dailyClubs
+      };
+    });
+
+    res.json(result);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// super_admin 查看全部用户列表（姓名、班级、ID）
+app.get('/api/admin/users/list', async (req, res) => {
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || op.role !== 'super_admin') return res.status(403).json({ error: '仅超级管理员可查看' });
+
+    const users = await User.find().select('userID name class role').sort({ class: 1, name: 1 }).lean();
+    res.json(users.map(u => ({
+      userID: u.userID,
+      name: u.name,
+      class: u.class,
+      role: u.role || 'user'
+    })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/api/clubs/document', async (req, res) => {
   try {
     const { operatorID } = req.query;
