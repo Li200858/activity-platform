@@ -12,7 +12,7 @@ const XLSX = require('xlsx');
 const { pinyin } = require('pinyin-pro');
 const { 
   mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification, SemesterRotation,
-  WednesdayConfirmation, ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest, ClubVenueSchedule, IDRecoveryRequest
+  WednesdayConfirmation, ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest, ClubVenueSchedule, Announcement, IDRecoveryRequest
 } = require('./db');
 
 const app = express();
@@ -1627,6 +1627,67 @@ app.post('/api/audit/approve-batch', async (req, res) => {
       } catch (_) { /* 跳过单个失败 */ }
     }
     res.json({ success: true, count: successCount, rejectedFull: type === 'clubJoin' ? rejectedCount : undefined });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// ---------- 公告（所有用户可见，仅管理员可编辑发布） ----------
+app.get('/api/announcements', async (req, res) => {
+  try {
+    const list = await Announcement.find().sort({ createdAt: -1 }).lean();
+    res.json(list.map(a => ({ ...a, id: a._id.toString() })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/announcements', async (req, res) => {
+  try {
+    const { operatorID, title, content } = req.body;
+    if (!operatorID || !title || !content) return res.status(400).json({ error: '缺少 operatorID、title 或 content' });
+    const t = String(title).trim();
+    const c = String(content).trim();
+    if (!t || !c) return res.status(400).json({ error: '标题和内容不能为空' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可发布公告' });
+    const ann = await Announcement.create({ title: t, content: c, authorID: operatorID });
+    const obj = ann.toObject();
+    obj.id = ann._id.toString();
+    res.json(obj);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.put('/api/announcements/:id', async (req, res) => {
+  try {
+    const { operatorID, title, content } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可编辑公告' });
+    const ann = await Announcement.findById(req.params.id);
+    if (!ann) return res.status(404).json({ error: '公告不存在' });
+    if (title !== undefined) {
+      const t = String(title).trim();
+      if (!t) return res.status(400).json({ error: '标题不能为空' });
+      ann.title = t;
+    }
+    if (content !== undefined) {
+      const c = String(content).trim();
+      if (!c) return res.status(400).json({ error: '内容不能为空' });
+      ann.content = c;
+    }
+    await ann.save();
+    const obj = ann.toObject();
+    obj.id = ann._id.toString();
+    res.json(obj);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.delete('/api/announcements/:id', async (req, res) => {
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可删除公告' });
+    const ann = await Announcement.findByIdAndDelete(req.params.id);
+    if (!ann) return res.status(404).json({ error: '公告不存在' });
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 

@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 
-function AuditStatus({ user }) {
-  const { t } = useLanguage();
+function AuditStatus({ user, onAnnouncementsChange }) {
+  const { t, isEn } = useLanguage();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -21,10 +21,30 @@ function AuditStatus({ user }) {
   const [allUsersList, setAllUsersList] = useState([]);
   const [showClubSelections, setShowClubSelections] = useState(false);
   const [showAllUsers, setShowAllUsers] = useState(false);
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementForm, setAnnouncementForm] = useState({ title: '', content: '' });
+  const [editingAnnouncement, setEditingAnnouncement] = useState(null);
+  const [announcementLoading, setAnnouncementLoading] = useState(false);
+  const [announcementsFetching, setAnnouncementsFetching] = useState(false);
+
+  const fetchAnnouncements = async () => {
+    setAnnouncementsFetching(true);
+    try {
+      const res = await api.get('/announcements');
+      setAnnouncements(res.data || []);
+    } catch (e) { setAnnouncements([]); }
+    finally { setAnnouncementsFetching(false); }
+  };
 
   useEffect(() => {
     fetchAuditStatus();
   }, []);
+
+  useEffect(() => {
+    if (user.role === 'admin' || user.role === 'super_admin') {
+      fetchAnnouncements();
+    }
+  }, [user?.role]);
 
   useEffect(() => {
     if (data && (user.role === 'admin' || user.role === 'super_admin')) {
@@ -304,6 +324,93 @@ function AuditStatus({ user }) {
                 ))}
               </div>
             </section>
+          </div>
+
+          {/* 管理员：公告管理 */}
+          <div className="mt-8 pt-6 border-t border-gray-100">
+            <h3 className="text-sm font-bold text-gray-700 mb-3">{isEn ? 'Announcements' : '公告管理'}</h3>
+            <div className="space-y-3">
+              <div className="space-y-2">
+                <input
+                  type="text"
+                  placeholder={isEn ? 'Title' : '标题'}
+                  value={announcementForm.title}
+                  onChange={e => setAnnouncementForm(f => ({ ...f, title: e.target.value }))}
+                  className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm"
+                />
+                <div className="flex gap-2">
+                  <textarea
+                    placeholder={isEn ? 'Content' : '内容'}
+                    value={announcementForm.content}
+                    onChange={e => setAnnouncementForm(f => ({ ...f, content: e.target.value }))}
+                    rows={2}
+                    className="flex-1 bg-gray-50 border border-gray-200 rounded-xl px-4 py-2 text-sm resize-none"
+                  />
+                  <button
+                    disabled={announcementLoading}
+                    onClick={async () => {
+                      if (!announcementForm.title.trim() || !announcementForm.content.trim()) {
+                        alert(isEn ? 'Please fill title and content' : '请填写标题和内容');
+                        return;
+                      }
+                      setAnnouncementLoading(true);
+                      try {
+                        await api.post('/announcements', { operatorID: user.userID, title: announcementForm.title.trim(), content: announcementForm.content.trim() });
+                        setAnnouncementForm({ title: '', content: '' });
+                        await fetchAnnouncements();
+                        onAnnouncementsChange?.();
+                        alert(isEn ? 'Published' : '已发布');
+                      } catch (e) {
+                        alert(e.response?.data?.error || (isEn ? 'Failed' : '发布失败'));
+                      } finally {
+                        setAnnouncementLoading(false);
+                      }
+                    }}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 self-start disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {announcementLoading ? (isEn ? 'Publishing...' : '发布中...') : (isEn ? 'Publish' : '发布')}
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2 max-h-48 overflow-y-auto">
+                {announcementsFetching ? (
+                  <p className="text-gray-400 text-sm py-4">{isEn ? 'Loading...' : '加载中...'}</p>
+                ) : announcements.map(a => (
+                  <div key={a.id} className="flex justify-between items-center p-3 bg-amber-50 rounded-xl border border-amber-100 text-sm">
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-amber-800 truncate">{a.title}</p>
+                      <p className="text-xs text-amber-600 truncate mt-0.5">{a.content}</p>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0 ml-2">
+                      <button onClick={() => setEditingAnnouncement(a)} className="text-xs px-3 py-1.5 bg-white border border-amber-200 text-amber-600 rounded-lg font-bold hover:bg-amber-50">
+                        {isEn ? 'Edit' : '编辑'}
+                      </button>
+                      <button
+                        disabled={announcementLoading}
+                        onClick={async () => {
+                          if (!window.confirm(isEn ? 'Delete this announcement?' : '确定删除该公告？')) return;
+                          setAnnouncementLoading(true);
+                          try {
+                            await api.delete(`/announcements/${a.id}?operatorID=${user.userID}`);
+                            await fetchAnnouncements();
+                            onAnnouncementsChange?.();
+                            alert(isEn ? 'Deleted' : '已删除');
+                          } catch (e) {
+                            alert(e.response?.data?.error || (isEn ? 'Failed' : '删除失败'));
+                          } finally {
+                            setAnnouncementLoading(false);
+                          }
+                        }}
+                        className="text-xs px-3 py-1.5 bg-white border border-gray-200 text-gray-600 rounded-lg font-bold hover:bg-red-50 hover:text-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {isEn ? 'Delete' : '删除'}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+                {!announcementsFetching && announcements.length === 0 && <p className="text-gray-400 text-sm py-2">{isEn ? 'No announcements yet' : '暂无公告'}</p>}
+              </div>
+            </div>
           </div>
 
           {/* 管理员：查看所有用户社团选择 */}
@@ -818,6 +925,58 @@ function AuditStatus({ user }) {
                 className="px-4 py-4 text-gray-400 font-bold hover:text-gray-600 transition-colors"
               >
                 {t('common.close')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 公告编辑弹窗 */}
+      {editingAnnouncement && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditingAnnouncement(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-gray-800 mb-4">{isEn ? 'Edit announcement' : '编辑公告'}</h3>
+            <input
+              type="text"
+              placeholder={isEn ? 'Title' : '标题'}
+              value={editingAnnouncement.title}
+              onChange={e => setEditingAnnouncement(a => ({ ...a, title: e.target.value }))}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 mb-3"
+            />
+            <textarea
+              placeholder={isEn ? 'Content' : '内容'}
+              value={editingAnnouncement.content}
+              onChange={e => setEditingAnnouncement(a => ({ ...a, content: e.target.value }))}
+              rows={4}
+              className="w-full border border-gray-200 rounded-xl px-4 py-3 mb-4"
+            />
+            <div className="flex gap-2">
+              <button disabled={announcementLoading} onClick={() => setEditingAnnouncement(null)} className="flex-1 py-2 rounded-lg border border-gray-300 font-bold text-gray-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                {isEn ? 'Cancel' : '取消'}
+              </button>
+              <button
+                disabled={announcementLoading}
+                onClick={async () => {
+                  setAnnouncementLoading(true);
+                  try {
+                    await api.put(`/announcements/${editingAnnouncement.id}`, {
+                      operatorID: user.userID,
+                      title: editingAnnouncement.title.trim(),
+                      content: editingAnnouncement.content.trim()
+                    });
+                    setEditingAnnouncement(null);
+                    await fetchAnnouncements();
+                    onAnnouncementsChange?.();
+                    alert(isEn ? 'Saved' : '已保存');
+                  } catch (e) {
+                    alert(e.response?.data?.error || (isEn ? 'Failed' : '保存失败'));
+                  } finally {
+                    setAnnouncementLoading(false);
+                  }
+                }}
+                className="flex-1 py-2 rounded-lg bg-amber-600 text-white font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {announcementLoading ? (isEn ? 'Saving...' : '保存中...') : (isEn ? 'Save' : '保存')}
               </button>
             </div>
           </div>

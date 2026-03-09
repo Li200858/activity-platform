@@ -164,6 +164,13 @@ const ClubVenueScheduleSchema = new mongoose.Schema({
   venueName: { type: String, required: true }
 }, { timestamps: true });
 
+// 公告（管理员发布，所有用户可见）
+const AnnouncementSchema = new mongoose.Schema({
+  title: { type: String, required: true },
+  content: { type: String, required: true },
+  authorID: { type: String, required: true }
+}, { timestamps: true });
+
 // 用户找回ID请求
 const IDRecoveryRequestSchema = new mongoose.Schema({
   name: { type: String, required: true },
@@ -190,6 +197,7 @@ const ClubAttendanceSession = mongoose.model('ClubAttendanceSession', ClubAttend
 const ClubAttendanceRecord = mongoose.model('ClubAttendanceRecord', ClubAttendanceRecordSchema);
 const ClubVenueRequest = mongoose.model('ClubVenueRequest', ClubVenueRequestSchema);
 const ClubVenueSchedule = mongoose.model('ClubVenueSchedule', ClubVenueScheduleSchema);
+const Announcement = mongoose.model('Announcement', AnnouncementSchema);
 const IDRecoveryRequest = mongoose.model('IDRecoveryRequest', IDRecoveryRequestSchema);
 
 // 为了兼容Sequelize的API，创建一些包装方法
@@ -227,5 +235,6 @@ module.exports = {
   ClubAttendanceRecord,
   ClubVenueRequest,
   ClubVenueSchedule,
+  Announcement,
   IDRecoveryRequest
 };

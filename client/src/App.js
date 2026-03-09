@@ -26,9 +26,22 @@ function App() {
   const [hideID, setHideID] = useState(() => localStorage.getItem('hideID') === '1');
   const [showPinModal, setShowPinModal] = useState(false);
   const [pinModalValue, setPinModalValue] = useState('');
+  const [announcements, setAnnouncements] = useState([]);
+  const [announcementsLoading, setAnnouncementsLoading] = useState(true);
+  const [selectedAnnouncement, setSelectedAnnouncement] = useState(null);
+
+  const fetchAnnouncements = async (showLoading = true) => {
+    if (showLoading) setAnnouncementsLoading(true);
+    try {
+      const res = await api.get('/announcements');
+      setAnnouncements(res.data || []);
+    } catch (e) { setAnnouncements([]); }
+    finally { if (showLoading) setAnnouncementsLoading(false); }
+  };
 
   useEffect(() => {
     if (user) {
+      fetchAnnouncements();
       checkNotifications();
       socket.on('notification_update', (data) => {
         // 管理员接收所有新申请或新反馈的提醒
@@ -245,6 +258,27 @@ function App() {
       </header>
 
       <main className="p-4 sm:p-8 max-w-5xl mx-auto">
+        {/* 公告栏：所有用户可见，点击查看完整内容 */}
+        {announcementsLoading ? (
+          <div className="mb-6 p-4 rounded-xl bg-amber-50/50 border border-amber-100 animate-pulse">
+            <div className="h-4 bg-amber-200/50 rounded w-1/3 mb-2"></div>
+            <div className="h-3 bg-amber-200/30 rounded w-full"></div>
+          </div>
+        ) : announcements.length > 0 && (
+          <div className="mb-6 space-y-2">
+            {announcements.slice(0, 3).map((a) => (
+              <button
+                key={a.id}
+                onClick={() => setSelectedAnnouncement(a)}
+                className="w-full text-left p-4 rounded-xl bg-amber-50 border border-amber-200 hover:bg-amber-100 transition-colors"
+              >
+                <p className="font-bold text-amber-800">{a.title}</p>
+                <p className="text-xs text-amber-600 mt-1 line-clamp-2">{a.content}</p>
+              </button>
+            ))}
+          </div>
+        )}
+
         {activeTab === '搜索结果' && searchResults && (
           <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
             <div className="flex justify-between items-center">
@@ -333,9 +367,22 @@ function App() {
         {activeTab === '社团事宜' && <ClubMatters user={user} />}
         {activeTab === '活动事宜' && <ActivityMatters user={user} />}
         {activeTab === '意见反馈' && <Feedback user={user} />}
-        {activeTab === '审核状态' && <AuditStatus user={user} />}
+        {activeTab === '审核状态' && <AuditStatus user={user} onAnnouncementsChange={() => fetchAnnouncements(false)} />}
         {activeTab === '反馈收集' && <FeedbackCollection user={user} />}
       </main>
+
+      {/* 公告详情弹窗 */}
+      {selectedAnnouncement && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedAnnouncement(null)}>
+          <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <h3 className="font-bold text-gray-800 text-lg mb-3">{selectedAnnouncement.title}</h3>
+            <p className="text-sm text-gray-600 whitespace-pre-wrap">{selectedAnnouncement.content}</p>
+            <button onClick={() => setSelectedAnnouncement(null)} className="mt-4 w-full py-2 rounded-lg border border-gray-300 font-bold text-gray-600">
+              {isEn ? 'Close' : '关闭'}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* PIN 设置弹窗 */}
       {showPinModal && (
