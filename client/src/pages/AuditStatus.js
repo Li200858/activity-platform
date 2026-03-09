@@ -280,17 +280,30 @@ function AuditStatus({ user, onAnnouncementsChange }) {
               <span className="w-1.5 h-6 bg-red-600 rounded-full"></span>
               {t('audit.adminConsole')}
             </h2>
-            <button
-              type="button"
-              onClick={() => {
-                const base = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-                window.open(`${base}/api/admin/clubs/export-all?operatorID=${encodeURIComponent(user.userID)}`, '_blank', 'noopener');
-              }}
-              className="px-4 py-2 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition-colors flex items-center gap-2"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-              {isEn ? 'Export all club members (Excel)' : '一键导出全部社团人员'}
-            </button>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  const base = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+                  window.open(`${base}/api/admin/clubs/export-all?operatorID=${encodeURIComponent(user.userID)}&category=wednesday`, '_blank', 'noopener');
+                }}
+                className="px-4 py-2 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                {isEn ? 'Export Wed. clubs' : '一键导出周三社团人员'}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const base = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+                  window.open(`${base}/api/admin/clubs/export-all?operatorID=${encodeURIComponent(user.userID)}&category=daily`, '_blank', 'noopener');
+                }}
+                className="px-4 py-2 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition-colors flex items-center gap-2"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                {isEn ? 'Export daily clubs' : '一键导出日常社团人员'}
+              </button>
+            </div>
           </div>
           
           <div className="grid md:grid-cols-2 gap-8">

@@ -2035,15 +2035,20 @@ app.get('/api/clubs/document', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 一键导出所有社团人员 Excel（仅管理员和超级管理员，社长无权限）
+// 一键导出社团人员 Excel（仅管理员和超级管理员，社长无权限）
+// category=wednesday 仅周三社团（含 both），category=daily 仅日常社团（含 both）
 app.get('/api/admin/clubs/export-all', async (req, res) => {
   try {
-    const { operatorID } = req.query;
+    const { operatorID, category } = req.query;
     if (!operatorID) return res.status(400).json({ error: '缺少 operatorID 参数' });
     const op = await User.findOne({ userID: operatorID });
     if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可导出' });
 
-    const clubs = await Club.find({ status: 'approved' }).sort({ name: 1 }).lean();
+    const filter = { status: 'approved' };
+    if (category === 'wednesday') filter.$or = [{ category: 'wednesday' }, { category: 'both' }];
+    else if (category === 'daily') filter.$or = [{ category: 'daily' }, { category: 'both' }];
+
+    const clubs = await Club.find(filter).sort({ name: 1 }).lean();
     const allMemberUserIDs = [...new Set((await ClubMember.find({ status: 'approved' }).lean()).map(m => m.userID))];
     const users = allMemberUserIDs.length ? await User.find({ userID: { $in: allMemberUserIDs } }).select('userID name englishName class').lean() : [];
     const userMap = new Map(users.map(u => [u.userID, u]));
@@ -2060,8 +2065,9 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
       }));
     const memberCounts = await Promise.all(clubs.map(c => ClubMember.countDocuments({ clubID: c._id, status: 'approved' })));
     memberCounts.forEach((cnt, i) => { summaryRows[i]['人数'] = cnt; });
+    const summaryLabel = category === 'wednesday' ? '周三社团汇总' : category === 'daily' ? '日常社团汇总' : '社团汇总';
     const summarySheet = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ '序号': '', '社团名称': '暂无社团', '分类': '', '人数': '', '负责人': '' }]);
-    XLSX.utils.book_append_sheet(workbook, summarySheet, '社团汇总');
+    XLSX.utils.book_append_sheet(workbook, summarySheet, summaryLabel);
 
     // 每个社团一个 sheet：成员列表（格式与单个社团导出完全一致：序号、姓名、英文名、班级）
     for (let i = 0; i < clubs.length; i++) {
@@ -2084,9 +2090,10 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
       XLSX.utils.book_append_sheet(workbook, ws, sheetName);
     }
 
+    const fileName = category === 'wednesday' ? '周三社团人员' : category === 'daily' ? '日常社团人员' : '全部社团人员';
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent('全部社团人员')}_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}_${new Date().toISOString().slice(0, 10)}.xlsx"`);
     res.send(buffer);
   } catch (e) {
     console.error('一键导出社团人员失败:', e);
