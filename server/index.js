@@ -808,6 +808,25 @@ app.put('/api/clubs/:id/update-category-type', async (req, res) => {
         if (club.type === 'activity' && blocksArray.includes('block1')) {
           return res.status(400).json({ error: '活动社团不能选择 Block1（学术固定时段）' });
         }
+        // 检查修改后是否与成员的其他周三社团时间重叠
+        const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).lean();
+        const conflictNames = [];
+        for (const m of members) {
+          const otherMems = await ClubMember.find({ userID: m.userID, status: 'approved', clubID: { $ne: club._id } }).populate('clubID').lean();
+          const usedBlocks = new Set();
+          for (const om of otherMems) {
+            if (!om.clubID || !clubHasWednesday(om.clubID.category)) continue;
+            (om.clubID.blocks || []).forEach(b => usedBlocks.add(b));
+          }
+          const overlap = blocksArray.some(b => usedBlocks.has(b));
+          if (overlap) {
+            const u = await User.findOne({ userID: m.userID }).select('name').lean();
+            conflictNames.push(u ? u.name : m.userID);
+          }
+        }
+        if (conflictNames.length > 0) {
+          return res.status(400).json({ error: `修改后与以下成员的其他周三社团时间重叠，无法保存：${conflictNames.join('、')}` });
+        }
         club.blocks = blocksArray;
       }
     } else {
