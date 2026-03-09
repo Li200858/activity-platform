@@ -759,6 +759,15 @@ function AuditStatus({ user, onAnnouncementsChange }) {
                         {r.hasPin && <p className="text-amber-600 font-medium">{t('audit.pinRecoveryHasPin')}</p>}
                       </div>
                       <div className="flex flex-col gap-1">
+                        {r.userIDFound && (
+                          <button
+                            type="button"
+                            onClick={() => { navigator.clipboard.writeText(r.userIDFound); alert(t('audit.idRecoveryCopied')); }}
+                            className="px-3 py-1 rounded-lg bg-blue-50 text-blue-600 font-bold hover:bg-blue-600 hover:text-white"
+                          >
+                            {t('audit.idRecoveryCopy')}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={async () => {
@@ -788,18 +797,29 @@ function AuditStatus({ user, onAnnouncementsChange }) {
               ) : (
                 <div className="space-y-2 max-h-72 overflow-auto pr-1">
                   {pinRecoveryRequests.filter(r => r.status === 'resolved').map(r => (
-                    <div key={r.id} className="p-3 bg-amber-50/50 rounded-xl border border-amber-100 text-[11px]">
-                      <p className="font-bold text-gray-800">{r.name} <span className="text-gray-400">· {r.class}</span></p>
-                      <p className="text-gray-500">{t('audit.idRecoveryEmail')}: {r.email}</p>
+                    <div key={r.id} className="p-3 bg-amber-50/50 rounded-xl border border-amber-100 text-[11px] flex justify-between items-start gap-2">
+                      <div>
+                        <p className="font-bold text-gray-800">{r.name} <span className="text-gray-400">· {r.class}</span></p>
+                        <p className="text-gray-500">{t('audit.idRecoveryEmail')}: {r.email}</p>
+                        {r.userIDFound && (
+                          <p className="text-gray-500">
+                            {t('audit.idRecoveryUserID')}: <span className="font-mono text-blue-600">{r.userIDFound}</span>
+                          </p>
+                        )}
+                        {r.operatorID && (
+                          <p className="text-gray-400 mt-1">
+                            {t('audit.idRecoveryHandledBy')}: {r.operatorID}
+                          </p>
+                        )}
+                      </div>
                       {r.userIDFound && (
-                        <p className="text-gray-500">
-                          {t('audit.idRecoveryUserID')}: <span className="font-mono text-blue-600">{r.userIDFound}</span>
-                        </p>
-                      )}
-                      {r.operatorID && (
-                        <p className="text-gray-400 mt-1">
-                          {t('audit.idRecoveryHandledBy')}: {r.operatorID}
-                        </p>
+                        <button
+                          type="button"
+                          onClick={() => { navigator.clipboard.writeText(r.userIDFound); alert(t('audit.idRecoveryCopied')); }}
+                          className="px-2 py-1 rounded-lg bg-blue-50 text-blue-600 font-bold hover:bg-blue-600 hover:text-white text-[10px] flex-shrink-0"
+                        >
+                          {t('audit.idRecoveryCopy')}
+                        </button>
                       )}
                     </div>
                   ))}
