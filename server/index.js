@@ -2098,8 +2098,8 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
     const summarySheet = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ '序号': '', '社团名称': '暂无社团', '分类': '', '人数': '', '负责人': '' }]);
     XLSX.utils.book_append_sheet(workbook, summarySheet, summaryLabel);
 
-    // 仅周三社团：新增「按年级排列」Sheet，列：班级、姓名、周三下午报名的社团
-    if (category === 'wednesday' && clubs.length > 0) {
+    // 仅周三社团：新增「按年级排列」Sheet，列：班级、姓名、周三下午报名的社团（含未报名学生，显示「未选择」）
+    if (category === 'wednesday') {
       const userToClubs = new Map(); // userID -> [clubName, ...]
       for (const club of clubs) {
         const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).lean();
@@ -2119,6 +2119,17 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
           class: cls,
           name: u.name || '',
           clubs: clubNames.join('、')
+        });
+      }
+      // 未报名任何周三社团的学生也加入，社团列显示「未选择」
+      const wednesdayMemberIDs = [...userToClubs.keys()];
+      const usersWithoutClub = await User.find({ userID: { $nin: wednesdayMemberIDs } }).select('userID name class').lean();
+      for (const u of usersWithoutClub) {
+        gradeRows.push({
+          userID: u.userID,
+          class: u.class || '',
+          name: u.name || '',
+          clubs: '未选择'
         });
       }
       gradeRows.sort((a, b) => {
