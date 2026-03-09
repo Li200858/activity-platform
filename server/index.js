@@ -12,7 +12,7 @@ const XLSX = require('xlsx');
 const { pinyin } = require('pinyin-pro');
 const { 
   mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification, SemesterRotation,
-  WednesdayConfirmation, ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest, ClubVenueSchedule, Announcement, IDRecoveryRequest
+  WednesdayConfirmation, ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest,   ClubVenueSchedule, Announcement, IDRecoveryRequest, PinRecoveryRequest
 } = require('./db');
 
 const app = express();
@@ -126,9 +126,29 @@ app.post('/api/user/register', async (req, res) => {
 
 app.post('/api/user/login', async (req, res) => {
   try {
-    const { userID, name, class: userClass, password, pin } = req.body;
-    const user = await User.findOne({ userID });
-    if (!user || user.name !== name || user.class !== userClass) return res.status(401).json({ error: '信息不匹配' });
+    const { userID, name, class: userClass, password, pin, loginMode } = req.body;
+    const n = (name || '').trim();
+    const c = (userClass || '').trim();
+
+    let user = null;
+    if (loginMode === 'pin') {
+      // PIN 登录：姓名+班级+PIN，无需 ID
+      const pinTrimmed = pin != null ? String(pin).trim() : '';
+      if (!n || !c || !pinTrimmed || !/^\d{4,6}$/.test(pinTrimmed)) return res.status(401).json({ error: '请填写姓名、班级和 4-6 位 PIN' });
+      user = await User.findOne({ name: n, class: c });
+      if (!user) return res.status(401).json({ error: '未找到该用户，请检查姓名和班级' });
+      if (!user.pinHash) return res.status(401).json({ error: '该账号未设置 PIN，请使用 ID 登录' });
+      if (hashPin(user.userID, pinTrimmed) !== user.pinHash) return res.status(401).json({ error: 'PIN 错误' });
+    } else {
+      // ID 登录：姓名+班级+ID（loginMode 非 'pin' 时均走此分支）
+      const uid = (userID || '').trim();
+      if (!uid || !n || !c) return res.status(401).json({ error: '请填写姓名、班级和 ID' });
+      user = await User.findOne({ userID: uid });
+      if (!user || user.name !== n || user.class !== c) return res.status(401).json({ error: '信息不匹配' });
+      // 若用户已设置 PIN，要求改用 PIN 登录
+      if (user.pinHash) return res.status(401).json({ error: '您设置了 PIN，请用 PIN 登录', requirePinLogin: true });
+      // 普通用户若设置了 PIN 会在上面返回；此处为未设置 PIN 的用户，无需验证 PIN
+    }
 
     // super_admin 需要额外输入密码
     if (user.role === 'super_admin') {
@@ -136,12 +156,6 @@ app.post('/api/user/login', async (req, res) => {
       if (!expectedPassword) return res.status(500).json({ error: '超级管理员密码未配置，请联系管理员设置 SUPER_ADMIN_PASSWORD 环境变量' });
       if (!password) return res.status(401).json({ error: '超级管理员需要输入密码', requirePassword: true });
       if (password !== expectedPassword) return res.status(401).json({ error: '密码错误' });
-    }
-
-    // 普通用户若设置了 PIN，需验证
-    if (user.pinHash) {
-      if (!pin || !/^\d{4,6}$/.test(String(pin))) return res.status(401).json({ error: '请输入 4-6 位 PIN', requirePin: true });
-      if (hashPin(userID, String(pin)) !== user.pinHash) return res.status(401).json({ error: 'PIN 错误' });
     }
 
     const prevLoginAt = user.lastLoginAt;
@@ -250,6 +264,70 @@ app.post('/api/admin/id-recovery/:id/resolve', async (req, res) => {
     if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可操作' });
     const doc = await IDRecoveryRequest.findById(id);
     if (!doc) return res.status(404).json({ error: '请求不存在' });
+    doc.status = 'resolved';
+    doc.operatorID = operatorID;
+    doc.note = note || '';
+    doc.resolvedAt = new Date();
+    await doc.save();
+    const plain = doc.toObject();
+    plain.id = doc._id.toString();
+    res.json(plain);
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 提交找回 PIN 请求（流程同 ID 找回）
+app.post('/api/pin-recovery', async (req, res) => {
+  try {
+    const { name, class: userClass, email } = req.body;
+    if (!name || !userClass || !email) return res.status(400).json({ error: '缺少姓名、班级或邮箱' });
+    const n = name.trim(), c = userClass.trim(), e = email.trim().toLowerCase();
+    const allSame = await PinRecoveryRequest.find({ name: n, class: c }).lean();
+    const existing = allSame.find(r => r.email && r.email.toLowerCase() === e);
+    if (existing) return res.status(400).json({ error: '该组合已申请过找回 PIN，请勿重复提交' });
+    const user = await User.findOne({ name: n, class: c });
+    const userIDFound = user ? user.userID : null;
+    const hasPin = user ? !!(user.pinHash) : false;
+    const reqDoc = await PinRecoveryRequest.create({
+      name: n,
+      class: c,
+      email: e,
+      userIDFound,
+      hasPin,
+      status: 'pending'
+    });
+    res.json({ success: true, id: reqDoc._id.toString() });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 管理员查看找回 PIN 请求列表
+app.get('/api/admin/pin-recovery', async (req, res) => {
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可查看' });
+    const list = await PinRecoveryRequest.find().sort({ createdAt: -1 }).lean();
+    res.json(list.map(r => ({ ...r, id: r._id.toString() })));
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 管理员处理找回 PIN：清除用户 PIN 并标记已处理（用户可用 ID 登录后重新设置）
+app.post('/api/admin/pin-recovery/:id/resolve', async (req, res) => {
+  try {
+    const { operatorID, note, clearPin } = req.body;
+    const { id } = req.params;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可操作' });
+    const doc = await PinRecoveryRequest.findById(id);
+    if (!doc) return res.status(404).json({ error: '请求不存在' });
+    if (doc.userIDFound && clearPin !== false) {
+      const target = await User.findOne({ userID: doc.userIDFound });
+      if (target) {
+        target.pinHash = null;
+        await target.save();
+      }
+    }
     doc.status = 'resolved';
     doc.operatorID = operatorID;
     doc.note = note || '';
@@ -1955,6 +2033,64 @@ app.get('/api/clubs/document', async (req, res) => {
     }));
     res.json(result);
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 一键导出所有社团人员 Excel（仅管理员和超级管理员，社长无权限）
+app.get('/api/admin/clubs/export-all', async (req, res) => {
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID 参数' });
+    const op = await User.findOne({ userID: operatorID });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可导出' });
+
+    const clubs = await Club.find({ status: 'approved' }).sort({ name: 1 }).lean();
+    const allMemberUserIDs = [...new Set((await ClubMember.find({ status: 'approved' }).lean()).map(m => m.userID))];
+    const users = allMemberUserIDs.length ? await User.find({ userID: { $in: allMemberUserIDs } }).select('userID name englishName class').lean() : [];
+    const userMap = new Map(users.map(u => [u.userID, u]));
+
+    const workbook = XLSX.utils.book_new();
+
+    // Sheet 1: 社团汇总（社团名、分类、人数、负责人等）
+    const summaryRows = clubs.map((c, idx) => ({
+        '序号': idx + 1,
+        '社团名称': c.name || '',
+        '分类': c.category === 'wednesday' ? '周三' : c.category === 'daily' ? '日常' : '周三+日常',
+        '人数': '', // 占位，下面填充
+        '负责人': c.actualLeaderName || (c.founderID ? (userMap.get(c.founderID)?.name || c.founderID) : '')
+      }));
+    const memberCounts = await Promise.all(clubs.map(c => ClubMember.countDocuments({ clubID: c._id, status: 'approved' })));
+    memberCounts.forEach((cnt, i) => { summaryRows[i]['人数'] = cnt; });
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ '序号': '', '社团名称': '暂无社团', '分类': '', '人数': '', '负责人': '' }]);
+    XLSX.utils.book_append_sheet(workbook, summarySheet, '社团汇总');
+
+    // 每个社团一个 sheet：成员列表
+    for (let i = 0; i < clubs.length; i++) {
+      const club = clubs[i];
+      const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).sort({ createdAt: 1 }).lean();
+      const memberRows = members.map((m, idx) => {
+        const u = userMap.get(m.userID);
+        return {
+          '序号': idx + 1,
+          '姓名': u ? u.name : '',
+          '班级': u ? u.class : '',
+          '用户ID': m.userID || '',
+          '英文名': u ? (u.englishName || '') : ''
+        };
+      });
+      const ws = XLSX.utils.json_to_sheet(memberRows.length ? memberRows : [{ '序号': '', '姓名': '暂无成员', '班级': '', '用户ID': '', '英文名': '' }]);
+      const baseName = (club.name || `社团${i + 1}`).replace(/[:\\/?*\[\]]/g, '');
+      const sheetName = (baseName.length > 28 ? baseName.slice(0, 28) : baseName) + `_${i + 1}`;
+      XLSX.utils.book_append_sheet(workbook, ws, sheetName);
+    }
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent('全部社团人员')}_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.send(buffer);
+  } catch (e) {
+    console.error('一键导出社团人员失败:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 下载社团成员Excel

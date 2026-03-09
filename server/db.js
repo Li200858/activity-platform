@@ -183,6 +183,19 @@ const IDRecoveryRequestSchema = new mongoose.Schema({
   resolvedAt: { type: Date }
 }, { timestamps: true });
 
+// 用户找回PIN请求（流程同ID找回，管理员清除PIN后用户可用ID登录并重新设置）
+const PinRecoveryRequestSchema = new mongoose.Schema({
+  name: { type: String, required: true },
+  class: { type: String, required: true },
+  email: { type: String, required: true },
+  userIDFound: { type: String }, // 系统根据姓名+班级预匹配到的 userID
+  hasPin: { type: Boolean }, // 该用户是否已设置PIN
+  status: { type: String, enum: ['pending', 'resolved'], default: 'pending' },
+  note: { type: String },
+  operatorID: { type: String },
+  resolvedAt: { type: Date }
+}, { timestamps: true });
+
 // 创建模型
 const User = mongoose.model('User', UserSchema);
 const Club = mongoose.model('Club', ClubSchema);
@@ -199,6 +212,7 @@ const ClubVenueRequest = mongoose.model('ClubVenueRequest', ClubVenueRequestSche
 const ClubVenueSchedule = mongoose.model('ClubVenueSchedule', ClubVenueScheduleSchema);
 const Announcement = mongoose.model('Announcement', AnnouncementSchema);
 const IDRecoveryRequest = mongoose.model('IDRecoveryRequest', IDRecoveryRequestSchema);
+const PinRecoveryRequest = mongoose.model('PinRecoveryRequest', PinRecoveryRequestSchema);
 
 // 为了兼容Sequelize的API，创建一些包装方法
 const sequelize = {
@@ -236,5 +250,6 @@ module.exports = {
   ClubVenueRequest,
   ClubVenueSchedule,
   Announcement,
-  IDRecoveryRequest
+  IDRecoveryRequest,
+  PinRecoveryRequest
 };

@@ -25,9 +25,17 @@ export const useAuth = () => {
     return userData;
   };
 
-  // 登录逻辑：姓名、班级、ID，super_admin 需 password，设置了 PIN 的用户需 pin
-  const login = async (name, userClass, userID, password, pin) => {
-    const res = await axios.post(`${API_BASE}/user/login`, { name, class: userClass, userID, password, pin });
+  // 登录逻辑：loginMode='pin' 时只需 name+class+pin；loginMode='id' 时需 name+class+userID
+  const login = async (name, userClass, userID, password, pin, loginMode = 'id') => {
+    const payload = { name, class: userClass, loginMode };
+    if (loginMode === 'pin') {
+      payload.pin = pin;
+    } else {
+      payload.userID = userID;
+      if (password) payload.password = password;
+      if (pin) payload.pin = pin;
+    }
+    const res = await axios.post(`${API_BASE}/user/login`, payload);
     const userData = res.data;
     setUser(userData);
     localStorage.setItem('user', JSON.stringify(userData));

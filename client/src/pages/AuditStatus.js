@@ -17,6 +17,7 @@ function AuditStatus({ user, onAnnouncementsChange }) {
   const [venueClubSearchQuery, setVenueClubSearchQuery] = useState('');
   const [venueClubSearchFocused, setVenueClubSearchFocused] = useState(false);
   const [idRecoveryRequests, setIdRecoveryRequests] = useState([]);
+  const [pinRecoveryRequests, setPinRecoveryRequests] = useState([]);
   const [usersClubSelections, setUsersClubSelections] = useState([]);
   const [allUsersList, setAllUsersList] = useState([]);
   const [showClubSelections, setShowClubSelections] = useState(false);
@@ -52,6 +53,7 @@ function AuditStatus({ user, onAnnouncementsChange }) {
       api.get('/clubs/venue-schedule').then(r => setVenueSchedulesAll(r.data || [])).catch(() => setVenueSchedulesAll([]));
       api.get('/clubs/approved').then(r => setClubsForVenue(r.data || [])).catch(() => setClubsForVenue([]));
       api.get(`/admin/id-recovery?operatorID=${user.userID}`).then(r => setIdRecoveryRequests(r.data || [])).catch(() => setIdRecoveryRequests([]));
+      api.get(`/admin/pin-recovery?operatorID=${user.userID}`).then(r => setPinRecoveryRequests(r.data || [])).catch(() => setPinRecoveryRequests([]));
     }
   }, [data, user?.userID, user?.role]);
 
@@ -273,10 +275,23 @@ function AuditStatus({ user, onAnnouncementsChange }) {
       {/* 管理员管理面板 */}
       {(user.role === 'admin' || user.role === 'super_admin') && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border-2 border-red-50">
-          <h2 className="text-xl font-black text-red-600 mb-6 flex items-center gap-2">
-            <span className="w-1.5 h-6 bg-red-600 rounded-full"></span>
-            {t('audit.adminConsole')}
-          </h2>
+          <div className="flex flex-wrap justify-between items-center gap-4 mb-6">
+            <h2 className="text-xl font-black text-red-600 flex items-center gap-2">
+              <span className="w-1.5 h-6 bg-red-600 rounded-full"></span>
+              {t('audit.adminConsole')}
+            </h2>
+            <button
+              type="button"
+              onClick={() => {
+                const base = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+                window.open(`${base}/api/admin/clubs/export-all?operatorID=${encodeURIComponent(user.userID)}`, '_blank', 'noopener');
+              }}
+              className="px-4 py-2 bg-green-600 text-white rounded-xl font-bold text-sm hover:bg-green-700 transition-colors flex items-center gap-2"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+              {isEn ? 'Export all club members (Excel)' : '一键导出全部社团人员'}
+            </button>
+          </div>
           
           <div className="grid md:grid-cols-2 gap-8">
             {/* 社团审核列表 */}
@@ -683,6 +698,84 @@ function AuditStatus({ user, onAnnouncementsChange }) {
                 <div className="space-y-2 max-h-72 overflow-auto pr-1">
                   {idRecoveryRequests.filter(r => r.status === 'resolved').map(r => (
                     <div key={r.id} className="p-3 bg-gray-50 rounded-xl border border-gray-100 text-[11px]">
+                      <p className="font-bold text-gray-800">{r.name} <span className="text-gray-400">· {r.class}</span></p>
+                      <p className="text-gray-500">{t('audit.idRecoveryEmail')}: {r.email}</p>
+                      {r.userIDFound && (
+                        <p className="text-gray-500">
+                          {t('audit.idRecoveryUserID')}: <span className="font-mono text-blue-600">{r.userIDFound}</span>
+                        </p>
+                      )}
+                      {r.operatorID && (
+                        <p className="text-gray-400 mt-1">
+                          {t('audit.idRecoveryHandledBy')}: {r.operatorID}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+        </div>
+      )}
+
+      {/* 管理员：处理找回PIN请求 */}
+      {(user.role === 'admin' || user.role === 'super_admin') && (
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 mb-6">
+          <h2 className="text-xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <span className="w-1.5 h-6 bg-amber-600 rounded-full"></span>
+            {t('audit.pinRecoveryTitle')}
+          </h2>
+          <div className="grid md:grid-cols-2 gap-6">
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-widest">{t('audit.pinRecoveryPending')}</h3>
+              {pinRecoveryRequests.filter(r => r.status === 'pending').length === 0 ? (
+                <p className="text-gray-300 text-sm">{t('audit.pinRecoveryNoPending')}</p>
+              ) : (
+                <div className="space-y-2">
+                  {pinRecoveryRequests.filter(r => r.status === 'pending').map(r => (
+                    <div key={r.id} className="p-3 bg-amber-50 rounded-xl border border-amber-100 text-xs flex justify-between items-start gap-3">
+                      <div className="space-y-1">
+                        <p className="font-bold text-gray-800">{r.name} <span className="text-gray-400">· {r.class}</span></p>
+                        <p className="text-gray-600">{t('audit.idRecoveryEmail')}: {r.email}</p>
+                        {r.userIDFound && (
+                          <p className="text-gray-600">
+                            {t('audit.idRecoveryUserID')}: <span className="font-mono text-blue-600">{r.userIDFound}</span>
+                          </p>
+                        )}
+                        {r.hasPin && <p className="text-amber-600 font-medium">{t('audit.pinRecoveryHasPin')}</p>}
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              await api.post(`/admin/pin-recovery/${r.id}/resolve`, { operatorID: user.userID, note: '', clearPin: true });
+                              const res = await api.get(`/admin/pin-recovery?operatorID=${user.userID}`);
+                              setPinRecoveryRequests(res.data || []);
+                              alert(isEn ? 'PIN cleared. User can login with ID and set new PIN.' : '已清除 PIN，用户可用 ID 登录后重新设置');
+                            } catch (e) {
+                              alert(e.response?.data?.error || '操作失败');
+                            }
+                          }}
+                          className="px-3 py-1 rounded-lg bg-amber-600 text-white font-bold hover:bg-amber-700"
+                        >
+                          {t('audit.pinRecoveryClearPin')}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+            <section>
+              <h3 className="text-xs font-bold text-gray-400 mb-2 uppercase tracking-widest">{t('audit.pinRecoveryResolved')}</h3>
+              {pinRecoveryRequests.filter(r => r.status === 'resolved').length === 0 ? (
+                <p className="text-gray-300 text-sm">{t('audit.pinRecoveryNoResolved')}</p>
+              ) : (
+                <div className="space-y-2 max-h-72 overflow-auto pr-1">
+                  {pinRecoveryRequests.filter(r => r.status === 'resolved').map(r => (
+                    <div key={r.id} className="p-3 bg-amber-50/50 rounded-xl border border-amber-100 text-[11px]">
                       <p className="font-bold text-gray-800">{r.name} <span className="text-gray-400">· {r.class}</span></p>
                       <p className="text-gray-500">{t('audit.idRecoveryEmail')}: {r.email}</p>
                       {r.userIDFound && (
