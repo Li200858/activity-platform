@@ -2063,21 +2063,22 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
     const summarySheet = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ '序号': '', '社团名称': '暂无社团', '分类': '', '人数': '', '负责人': '' }]);
     XLSX.utils.book_append_sheet(workbook, summarySheet, '社团汇总');
 
-    // 每个社团一个 sheet：成员列表
+    // 每个社团一个 sheet：成员列表（格式与单个社团导出完全一致：序号、姓名、英文名、班级）
     for (let i = 0; i < clubs.length; i++) {
       const club = clubs[i];
       const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).sort({ createdAt: 1 }).lean();
-      const memberRows = members.map((m, idx) => {
-        const u = userMap.get(m.userID);
-        return {
-          '序号': idx + 1,
-          '姓名': u ? u.name : '',
-          '班级': u ? u.class : '',
-          '用户ID': m.userID || '',
-          '英文名': u ? (u.englishName || '') : ''
-        };
-      });
-      const ws = XLSX.utils.json_to_sheet(memberRows.length ? memberRows : [{ '序号': '', '姓名': '暂无成员', '班级': '', '用户ID': '', '英文名': '' }]);
+      const memberRows = members.length
+        ? members.map((m, idx) => {
+            const u = userMap.get(m.userID);
+            return {
+              '序号': idx + 1,
+              '姓名': u ? u.name : '',
+              '英文名': u ? (u.englishName || '') : '',
+              '班级': u ? u.class : ''
+            };
+          })
+        : [{ '序号': '', '姓名': '暂无成员', '英文名': '', '班级': '' }];
+      const ws = XLSX.utils.json_to_sheet(memberRows);
       const baseName = (club.name || `社团${i + 1}`).replace(/[:\\/?*\[\]]/g, '');
       const sheetName = (baseName.length > 28 ? baseName.slice(0, 28) : baseName) + `_${i + 1}`;
       XLSX.utils.book_append_sheet(workbook, ws, sheetName);

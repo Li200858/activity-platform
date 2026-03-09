@@ -30,6 +30,7 @@ export const useAuth = () => {
     const payload = { name, class: userClass, loginMode };
     if (loginMode === 'pin') {
       payload.pin = pin;
+      if (password) payload.password = password; // super_admin 需密码
     } else {
       payload.userID = userID;
       if (password) payload.password = password;
