@@ -1825,19 +1825,22 @@ app.post('/api/admin/feedback/reply', async (req, res) => {
 });
 
 // 通知与权限
+// 返回 hasAuditUnread（审核状态红点）和 hasFeedbackUnread（反馈收集红点），避免两者互相干扰
 app.get('/api/notifications/:userID', async (req, res) => {
   try {
     const user = await User.findOne({ userID: req.params.userID });
-    if (!user) return res.json({ hasUnread: false });
+    if (!user) return res.json({ hasAuditUnread: false, hasFeedbackUnread: false });
     const count = await Notification.countDocuments({ userID: req.params.userID, isRead: false });
-    let hasTasks = false;
-    
+    let hasAuditTasks = false;
+    let hasFeedbackTasks = false;
+
     // 管理员任务
     if (user.role === 'admin' || user.role === 'super_admin') {
       const c = await Club.countDocuments({ status: 'pending' });
       const a = await Activity.countDocuments({ status: 'pending' });
       const f = await Feedback.countDocuments({ status: 'pending' });
-      if (c > 0 || a > 0 || f > 0) hasTasks = true;
+      if (c > 0 || a > 0) hasAuditTasks = true;
+      if (f > 0) hasFeedbackTasks = true;
     }
 
     // 活动组织者任务 (活动报名审核)
@@ -1845,7 +1848,7 @@ app.get('/api/notifications/:userID', async (req, res) => {
     const myActIDs = myActs.map(a => a._id);
     if (myActIDs.length > 0) {
       const regCount = await ActivityRegistration.countDocuments({ activityID: { $in: myActIDs }, status: 'pending' });
-      if (regCount > 0) hasTasks = true;
+      if (regCount > 0) hasAuditTasks = true;
     }
 
     // 社团创建者任务 (成员加入审核)
@@ -1853,11 +1856,14 @@ app.get('/api/notifications/:userID', async (req, res) => {
     const myClubIDs = myClubs.map(c => c._id);
     if (myClubIDs.length > 0) {
       const joinCount = await ClubMember.countDocuments({ clubID: { $in: myClubIDs }, status: 'pending' });
-      if (joinCount > 0) hasTasks = true;
+      if (joinCount > 0) hasAuditTasks = true;
     }
 
-    res.json({ hasUnread: count > 0 || hasTasks });
-  } catch (e) { res.json({ hasUnread: false }); }
+    // 用户自己的通知（status_update/feedback_reply）计入审核状态
+    const hasAuditUnread = count > 0 || hasAuditTasks;
+    const hasFeedbackUnread = hasFeedbackTasks;
+    res.json({ hasAuditUnread, hasFeedbackUnread });
+  } catch (e) { res.json({ hasAuditUnread: false, hasFeedbackUnread: false }); }
 });
 
 app.post('/api/notifications/read', async (req, res) => {
@@ -2035,6 +2041,29 @@ app.get('/api/clubs/document', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 年级/班级归一化与排序（用于周三社团按年级导出）
+// 年级1: G251-G257, 15/1.5/国际一五；年级2: EE1,TT1,G241-G244；年级3: EE2,TT2,G233,G234；年级4: G224,G225,G231,EE3,NEE4,TT3
+function normalizeClassForGrade(cls) {
+  if (!cls || typeof cls !== 'string') return '';
+  const s = cls.trim().toLowerCase();
+  if (s.startsWith('g') && s.length > 1) return s.slice(1); // G251 -> 251
+  return s;
+}
+function getGradeOrder(cls) {
+  const n = normalizeClassForGrade(cls);
+  if (!n) return 99;
+  // 年级1
+  if (['251', '252', '253', '254', '255', '256', '257'].includes(n)) return 1;
+  if (['15', '1.5', '国际一五'].includes(n)) return 1;
+  // 年级2
+  if (['ee1', 'tt1', '241', '242', '243', '244'].includes(n)) return 2;
+  // 年级3
+  if (['ee2', 'tt2', '233', '234'].includes(n)) return 3;
+  // 年级4
+  if (['224', '225', '231', 'ee3', 'nee4', 'tt3'].includes(n)) return 4;
+  return 99; // 未知年级放最后
+}
+
 // 一键导出社团人员 Excel（仅管理员和超级管理员，社长无权限）
 // category=wednesday 仅周三社团（含 both），category=daily 仅日常社团（含 both）
 app.get('/api/admin/clubs/export-all', async (req, res) => {
@@ -2068,6 +2097,45 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
     const summaryLabel = category === 'wednesday' ? '周三社团汇总' : category === 'daily' ? '日常社团汇总' : '社团汇总';
     const summarySheet = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ '序号': '', '社团名称': '暂无社团', '分类': '', '人数': '', '负责人': '' }]);
     XLSX.utils.book_append_sheet(workbook, summarySheet, summaryLabel);
+
+    // 仅周三社团：新增「按年级排列」Sheet，列：班级、姓名、周三下午报名的社团
+    if (category === 'wednesday' && clubs.length > 0) {
+      const userToClubs = new Map(); // userID -> [clubName, ...]
+      for (const club of clubs) {
+        const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).lean();
+        const clubName = club.name || '';
+        for (const m of members) {
+          if (!userToClubs.has(m.userID)) userToClubs.set(m.userID, []);
+          if (!userToClubs.get(m.userID).includes(clubName)) userToClubs.get(m.userID).push(clubName);
+        }
+      }
+      const gradeRows = [];
+      for (const [userID, clubNames] of userToClubs) {
+        const u = userMap.get(userID);
+        if (!u) continue;
+        const cls = u.class || '';
+        gradeRows.push({
+          userID,
+          class: cls,
+          name: u.name || '',
+          clubs: clubNames.join('、')
+        });
+      }
+      gradeRows.sort((a, b) => {
+        const gA = getGradeOrder(a.class), gB = getGradeOrder(b.class);
+        if (gA !== gB) return gA - gB;
+        const cA = (a.class || '').toLowerCase(), cB = (b.class || '').toLowerCase();
+        if (cA !== cB) return cA.localeCompare(cB);
+        return (a.name || '').localeCompare(b.name || '');
+      });
+      const gradeSheetData = gradeRows.map(r => ({
+        '班级': r.class,
+        '姓名': r.name,
+        '周三下午报名的社团': r.clubs
+      }));
+      const gradeSheet = XLSX.utils.json_to_sheet(gradeSheetData.length ? gradeSheetData : [{ '班级': '', '姓名': '暂无', '周三下午报名的社团': '' }]);
+      XLSX.utils.book_append_sheet(workbook, gradeSheet, '按年级排列');
+    }
 
     // 每个社团一个 sheet：成员列表（格式与单个社团导出完全一致：序号、姓名、英文名、班级）
     for (let i = 0; i < clubs.length; i++) {

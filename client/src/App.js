@@ -19,7 +19,8 @@ function App() {
   const { user, login, register, logout, copyID, updateEnglishName, setPin } = useAuth();
   const { lang, setLang, t, isEn } = useLanguage();
   const [activeTab, setActiveTab] = useState('社团事宜');
-  const [hasNotification, setHasNotification] = useState(false);
+  const [hasAuditUnread, setHasAuditUnread] = useState(false);
+  const [hasFeedbackUnread, setHasFeedbackUnread] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const [englishDraft, setEnglishDraft] = useState('');
@@ -44,12 +45,14 @@ function App() {
       fetchAnnouncements();
       checkNotifications();
       socket.on('notification_update', (data) => {
-        // 管理员接收所有新申请或新反馈的提醒
-        if (user.role === 'admin' || user.role === 'super_admin') {
-          setHasNotification(true);
+        const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+        if (data.type === 'new_feedback') {
+          if (isAdmin) setHasFeedbackUnread(true);
+        } else if (data.type === 'new_audit') {
+          if (isAdmin) setHasAuditUnread(true);
         } else if (data.userID === user.userID) {
-          // 用户只接收针对自己的通知
-          setHasNotification(true);
+          // 用户自己的通知（审核结果、反馈回复）-> 审核状态
+          setHasAuditUnread(true);
         }
       });
       
@@ -70,15 +73,19 @@ function App() {
     if (!user) return;
     try {
       const res = await axios.get(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/notifications/${user.userID}`);
-      setHasNotification(res.data.hasUnread);
+      setHasAuditUnread(res.data.hasAuditUnread ?? false);
+      setHasFeedbackUnread(res.data.hasFeedbackUnread ?? false);
     } catch (e) {}
   };
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     setSearchResults(null);
-    if (tab === '审核状态' || tab === '反馈收集') {
-      setHasNotification(false);
+    if (tab === '审核状态') {
+      setHasAuditUnread(false);
+      axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/notifications/read`, { userID: user.userID, operatorID: user.userID });
+    } else if (tab === '反馈收集') {
+      setHasFeedbackUnread(false);
       axios.post(`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/notifications/read`, { userID: user.userID, operatorID: user.userID });
     }
   };
@@ -161,7 +168,7 @@ function App() {
               {isAdmin && (
                 <button onClick={() => handleTabChange('反馈收集')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all relative ${activeTab === '反馈收集' ? 'bg-orange-500 text-white shadow-lg shadow-orange-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>
                   {t('app.tabs.feedbackCollection')}
-                  {hasNotification && activeTab !== '反馈收集' && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
+                  {hasFeedbackUnread && activeTab !== '反馈收集' && <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white"></span>}
                 </button>
               )}
             </div>
@@ -179,7 +186,7 @@ function App() {
                 className={`text-sm font-bold transition-colors relative flex items-center gap-1 ${activeTab === '审核状态' ? 'text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}
               >
                 <span>{t('app.tabs.audit')}</span>
-                {hasNotification && activeTab !== '审核状态' && activeTab !== '反馈收集' && (
+                {hasAuditUnread && activeTab !== '审核状态' && activeTab !== '反馈收集' && (
                   <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
                 )}
               </button>
