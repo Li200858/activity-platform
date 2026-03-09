@@ -2621,15 +2621,13 @@ app.delete('/api/clubs/:id', async (req, res) => {
     const club = await Club.findById(id);
     if (!club) return res.status(404).json({ error: '社团不存在' });
     
-    // 检查权限：社团创建者或 super_admin 可解散（admin 不能解散）
+    // 检查权限：仅社团创建者可解散（super_admin 也只能解散自己创建的社团，防止误操作）
     const user = await User.findOne({ userID });
     if (!user) return res.status(401).json({ error: '用户不存在' });
     
     const isFounder = club.founderID === userID;
-    const isSuperAdmin = user.role === 'super_admin';
-    
-    if (!isFounder && !isSuperAdmin) {
-      return res.status(403).json({ error: '只有社团创建者或超级管理员可以解散此社团' });
+    if (!isFounder) {
+      return res.status(403).json({ error: '只有社团创建者可以解散此社团' });
     }
     
     // 删除所有成员记录（成员回到自由人身份）

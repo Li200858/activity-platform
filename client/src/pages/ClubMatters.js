@@ -700,8 +700,8 @@ function ClubMatters({ user }) {
                             {t('club.downloadExcel')}
                           </button>
                         )}
-                        {/* 解散社团按钮 - 创建者或 super_admin 可见 */}
-                        {(club.founderID === user.userID || user.role === 'super_admin') && (
+                        {/* 解散社团按钮 - 仅创建者可见（super_admin 也只能解散自己创建的） */}
+                        {club.founderID === user.userID && (
                           <button 
                             onClick={async () => {
                               if (!window.confirm('确定要解散此社团吗？所有成员将回到自由人身份。')) return;
@@ -1762,8 +1762,8 @@ function ClubMatters({ user }) {
                     {t('club.downloadExcel')}
                   </button>
                 )}
-                {/* 解散社团按钮 - 创建者或 super_admin 可见 */}
-                {(selectedClubDetail.founderID === user.userID || user.role === 'super_admin') && (
+                {/* 解散社团按钮 - 仅创建者可见（super_admin 也只能解散自己创建的） */}
+                {selectedClubDetail.founderID === user.userID && (
                   <button 
                     onClick={async () => {
                       if (!window.confirm('确定要解散此社团吗？所有成员将回到自由人身份。')) return;
