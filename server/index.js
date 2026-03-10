@@ -2355,9 +2355,8 @@ app.post('/api/clubs/:id/add-member', async (req, res) => {
     const operator = await User.findOne({ userID: operatorID });
     if (!operator) return res.status(401).json({ error: '用户不存在' });
 
-    const isFounder = club.founderID === operatorID;
     const isSuperAdmin = operator.role === 'super_admin';
-    if (!isFounder && !isSuperAdmin) return res.status(403).json({ error: '仅社长或超级管理员可添加用户' });
+    if (!isSuperAdmin) return res.status(403).json({ error: '仅超级管理员可添加用户' });
 
     const targetUser = await User.findOne({ userID: targetUserID });
     if (!targetUser) return res.status(404).json({ error: '目标用户不存在' });

@@ -1828,7 +1828,7 @@ function ClubMatters({ user }) {
       {/* 成员列表视图 */}
       {view === 'members' && members && (() => {
         const membersClub = (managedClubs || []).find(c => c.id === membersClubId) || (myWednesdayClubs || []).find(m => m.Club?.id === membersClubId)?.Club || (myDailyClubs || []).find(m => m.Club?.id === membersClubId)?.Club || (clubs || []).find(c => c.id === membersClubId) || (selectedClubDetail?.id === membersClubId ? selectedClubDetail : null);
-        const canAddMember = membersClub && (membersClub.founderID === user.userID || user.role === 'super_admin');
+        const canAddMember = membersClub && user.role === 'super_admin';
         return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-6">
