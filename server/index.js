@@ -779,9 +779,10 @@ app.post('/api/clubs/:id/transfer-founder', async (req, res) => {
 
     if (targetUserID === operatorID) return res.status(400).json({ error: '不能转交给自己' });
 
-    // 若目标用户不是成员，先加入（需遵守 block 和人数限制）
+    // 若目标用户不是成员，需校验 block 和时段（人数限制在 -1 后再 +1，满员时也可转交）
     let existingMember = await ClubMember.findOne({ userID: targetUserID, clubID: club._id });
-    if (!existingMember || existingMember.status !== 'approved') {
+    const needsAdd = !existingMember || existingMember.status !== 'approved';
+    if (needsAdd) {
       const isWednesdayOrBoth = clubHasWednesday(club.category);
       if (isWednesdayOrBoth) {
         const wednesdayMembers = await ClubMember.find({ userID: targetUserID, status: 'approved' }).populate('clubID');
@@ -799,16 +800,7 @@ app.post('/api/clubs/:id/transfer-founder', async (req, res) => {
           }
         }
       }
-      if (club.capacity != null && club.capacity > 0) {
-        const currentCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
-        if (currentCount >= club.capacity) return res.status(400).json({ error: '该社团人数已满，无法添加新创建者' });
-      }
-      if (existingMember && existingMember.status === 'rejected') {
-        existingMember.status = 'approved';
-        await existingMember.save();
-      } else {
-        await ClubMember.create({ userID: targetUserID, clubID: club._id, status: 'approved' });
-      }
+      // 人数限制：先 -1 再 +1，满员时也可转交，不再在此检查
     }
 
     const oldFounderID = club.founderID;
@@ -819,8 +811,18 @@ app.post('/api/clubs/:id/transfer-founder', async (req, res) => {
     club.coreMemberIDs = coreList;
     await club.save();
 
-    // 原创建者转交后自动退出社团，不再保留为普通成员
+    // 先 -1：原创建者转交后自动退出社团
     await ClubMember.deleteOne({ userID: oldFounderID, clubID: club._id });
+
+    // 再 +1：若目标用户不是成员，加入为新创建者
+    if (needsAdd) {
+      if (existingMember && existingMember.status === 'rejected') {
+        existingMember.status = 'approved';
+        await existingMember.save();
+      } else {
+        await ClubMember.create({ userID: targetUserID, clubID: club._id, status: 'approved' });
+      }
+    }
 
     io.emit('notification_update', { userID: targetUserID });
     io.emit('notification_update', { userID: oldFounderID });
