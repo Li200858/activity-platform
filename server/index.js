@@ -2194,19 +2194,20 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
 
     const workbook = XLSX.utils.book_new();
 
-    // Sheet 1: 社团汇总（社团名、分类、活动时间、人数、负责人等）
+    // Sheet 1: 社团汇总（社团名、分类、活动时间、活动地点、人数、负责人等）
     const summaryRows = clubs.map((c, idx) => ({
         '序号': idx + 1,
         '社团名称': c.name || '',
         '分类': c.category === 'wednesday' ? '周三' : c.category === 'daily' ? '日常' : '周三+日常',
         '活动时间': formatClubActivityTime(c),
+        '活动地点': c.location || '',
         '人数': '', // 占位，下面填充
         '负责人': c.actualLeaderName || (c.founderID ? (userMap.get(c.founderID)?.name || c.founderID) : '')
       }));
     const memberCounts = await Promise.all(clubs.map(c => ClubMember.countDocuments({ clubID: c._id, status: 'approved' })));
     memberCounts.forEach((cnt, i) => { summaryRows[i]['人数'] = cnt; });
     const summaryLabel = category === 'wednesday' ? '周三社团汇总' : category === 'daily' ? '日常社团汇总' : '社团汇总';
-    const summarySheet = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ '序号': '', '社团名称': '暂无社团', '分类': '', '活动时间': '', '人数': '', '负责人': '' }]);
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ '序号': '', '社团名称': '暂无社团', '分类': '', '活动时间': '', '活动地点': '', '人数': '', '负责人': '' }]);
     XLSX.utils.book_append_sheet(workbook, summarySheet, summaryLabel);
 
     // 仅周三社团：新增「按年级排列」Sheet，列：班级、姓名、周三下午报名的社团（含未报名学生，显示「未选择」）
@@ -2259,10 +2260,11 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
       XLSX.utils.book_append_sheet(workbook, gradeSheet, '按年级排列');
     }
 
-    // 每个社团一个 sheet：成员列表（序号、姓名、英文名、班级、活动时间）
+    // 每个社团一个 sheet：成员列表（序号、姓名、英文名、班级、活动时间、活动地点）
     for (let i = 0; i < clubs.length; i++) {
       const club = clubs[i];
       const activityTime = formatClubActivityTime(club);
+      const activityLocation = club.location || '';
       const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).sort({ createdAt: 1 }).lean();
       const memberRows = members.length
         ? members.map((m, idx) => {
@@ -2272,10 +2274,11 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
               '姓名': u ? u.name : '',
               '英文名': u ? (u.englishName || '') : '',
               '班级': u ? u.class : '',
-              '活动时间': activityTime
+              '活动时间': activityTime,
+              '活动地点': activityLocation
             };
           })
-        : [{ '序号': '', '姓名': '暂无成员', '英文名': '', '班级': '', '活动时间': activityTime }];
+        : [{ '序号': '', '姓名': '暂无成员', '英文名': '', '班级': '', '活动时间': activityTime, '活动地点': activityLocation }];
       const ws = XLSX.utils.json_to_sheet(memberRows);
       const baseName = (club.name || `社团${i + 1}`).replace(/[:\\/?*\[\]]/g, '');
       const sheetName = (baseName.length > 28 ? baseName.slice(0, 28) : baseName) + `_${i + 1}`;
