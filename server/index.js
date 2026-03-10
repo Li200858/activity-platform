@@ -794,9 +794,9 @@ app.post('/api/clubs/:id/transfer-founder', async (req, res) => {
         if (targetUser.role !== 'super_admin') {
           const overlap = newBlocks.some(b => usedBlocks.has(b));
           if (overlap) return res.status(400).json({ error: '目标用户的其他周三社团与此社团时间重叠，无法转交' });
-        }
-        if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
-          return res.status(400).json({ error: `目标用户周三时段已满，无法加入` });
+          if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
+            return res.status(400).json({ error: `目标用户周三时段已满，无法加入` });
+          }
         }
       }
       if (club.capacity != null && club.capacity > 0) {
@@ -985,9 +985,9 @@ app.post('/api/clubs/register', async (req, res) => {
       if (!regUser || regUser.role !== 'super_admin') {
         const overlap = newBlocks.some(b => usedBlocks.has(b));
         if (overlap) return res.status(400).json({ error: '该社团与您已选的周三社团时间重叠，每个时段只能选一个社团' });
-      }
-      if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
-        return res.status(400).json({ error: `周三最多选 ${WEDNESDAY_BLOCK_LIMIT} 个时段，您已占 ${usedBlocks.size} 个，该社团占 ${newBlocks.length} 个` });
+        if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
+          return res.status(400).json({ error: `周三最多选 ${WEDNESDAY_BLOCK_LIMIT} 个时段，您已占 ${usedBlocks.size} 个，该社团占 ${newBlocks.length} 个` });
+        }
       }
     }
     
@@ -1109,9 +1109,9 @@ app.post('/api/clubs/rotate', async (req, res) => {
     if (!rotUser || rotUser.role !== 'super_admin') {
       const overlap = newBlocks.some(b => usedBlocks.has(b));
       if (overlap) return res.status(400).json({ error: '该社团与您其他周三社团时间重叠' });
-    }
-    if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
-      return res.status(400).json({ error: `周三最多 ${WEDNESDAY_BLOCK_LIMIT} 个时段，无法再选该社团` });
+      if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
+        return res.status(400).json({ error: `周三最多 ${WEDNESDAY_BLOCK_LIMIT} 个时段，无法再选该社团` });
+      }
     }
 
     const semester = getCurrentSemester();
@@ -2453,9 +2453,9 @@ app.post('/api/clubs/:id/add-member', async (req, res) => {
       if (targetUser.role !== 'super_admin') {
         const overlap = newBlocks.some(b => usedBlocks.has(b));
         if (overlap) return res.status(400).json({ error: '该用户的其他周三社团与此社团时间重叠，无法添加' });
-      }
-      if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
-        return res.status(400).json({ error: `该用户周三时段已满（最多 ${WEDNESDAY_BLOCK_LIMIT} 个），无法添加` });
+        if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
+          return res.status(400).json({ error: `该用户周三时段已满（最多 ${WEDNESDAY_BLOCK_LIMIT} 个），无法添加` });
+        }
       }
     }
 
