@@ -819,6 +819,9 @@ app.post('/api/clubs/:id/transfer-founder', async (req, res) => {
     club.coreMemberIDs = coreList;
     await club.save();
 
+    // 原创建者转交后自动退出社团，不再保留为普通成员
+    await ClubMember.deleteOne({ userID: oldFounderID, clubID: club._id });
+
     io.emit('notification_update', { userID: targetUserID });
     io.emit('notification_update', { userID: oldFounderID });
     res.json({ success: true, message: '转交成功' });
