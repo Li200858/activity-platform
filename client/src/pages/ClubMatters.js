@@ -47,6 +47,9 @@ function ClubMatters({ user }) {
   const [wednesdayConfirmed, setWednesdayConfirmed] = useState(false); // 周三社团是否已最终确认
   const [showFinalConfirmModal, setShowFinalConfirmModal] = useState(false); // 最终确认弹窗
   const [managedClubs, setManagedClubs] = useState([]); // 我管理的社团（社长或核心成员）
+  const [addMemberSearchQuery, setAddMemberSearchQuery] = useState('');
+  const [addMemberSearchResults, setAddMemberSearchResults] = useState([]);
+  const [addMemberSearching, setAddMemberSearching] = useState(false);
 
   useEffect(() => {
     fetchClubs();
@@ -252,6 +255,32 @@ function ClubMatters({ user }) {
       fetchMembers(membersClubId);
     } catch (err) {
       alert(err.response?.data?.error || '踢出失败');
+    }
+  };
+
+  const searchUsersForAddMember = async () => {
+    if (!addMemberSearchQuery.trim() || !membersClubId) return;
+    setAddMemberSearching(true);
+    try {
+      const res = await api.get(`/clubs/${membersClubId}/search-users?q=${encodeURIComponent(addMemberSearchQuery.trim())}&operatorID=${user.userID}`);
+      setAddMemberSearchResults(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      setAddMemberSearchResults([]);
+    } finally {
+      setAddMemberSearching(false);
+    }
+  };
+
+  const handleAddMember = async (targetUserID) => {
+    if (!membersClubId) return;
+    try {
+      await api.post(`/clubs/${membersClubId}/add-member`, { targetUserID, operatorID: user.userID });
+      alert('已添加');
+      setAddMemberSearchQuery('');
+      setAddMemberSearchResults([]);
+      fetchMembers(membersClubId);
+    } catch (err) {
+      alert(err.response?.data?.error || '添加失败');
     }
   };
 
@@ -1799,6 +1828,7 @@ function ClubMatters({ user }) {
       {/* 成员列表视图 */}
       {view === 'members' && members && (() => {
         const membersClub = (managedClubs || []).find(c => c.id === membersClubId) || (myWednesdayClubs || []).find(m => m.Club?.id === membersClubId)?.Club || (myDailyClubs || []).find(m => m.Club?.id === membersClubId)?.Club || (clubs || []).find(c => c.id === membersClubId) || (selectedClubDetail?.id === membersClubId ? selectedClubDetail : null);
+        const canAddMember = membersClub && (membersClub.founderID === user.userID || user.role === 'super_admin');
         return (
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
           <div className="flex justify-between items-center mb-6">
@@ -1810,6 +1840,40 @@ function ClubMatters({ user }) {
               {t('common.back')}
             </button>
           </div>
+
+          {canAddMember && (
+            <div className="mb-4 p-4 bg-blue-50 rounded-xl border border-blue-100">
+              <p className="text-xs font-bold text-blue-800 mb-2">{t('club.addUser')}</p>
+              <div className="flex gap-2 flex-wrap items-end">
+                <input
+                  type="text"
+                  placeholder={t('club.searchNameOrId')}
+                  value={addMemberSearchQuery}
+                  onChange={e => setAddMemberSearchQuery(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && searchUsersForAddMember()}
+                  className="flex-1 min-w-[120px] bg-white border rounded-lg px-3 py-2 text-sm"
+                />
+                <button type="button" onClick={searchUsersForAddMember} disabled={addMemberSearching} className="text-amber-600 text-sm font-bold px-4 py-2 rounded-lg bg-amber-50 hover:bg-amber-100 transition-colors">
+                  {addMemberSearching ? (isEn ? 'Searching...' : '搜索中...') : (isEn ? 'Search' : '搜索')}
+                </button>
+              </div>
+              {addMemberSearchResults.length > 0 && (
+                <div className="mt-3 space-y-2 max-h-40 overflow-y-auto">
+                  {addMemberSearchResults
+                    .filter(u => !members.members.some(m => m.userID === u.userID))
+                    .map(u => (
+                      <div key={u.userID} className="flex justify-between items-center py-2 px-3 bg-white rounded-lg border border-blue-100">
+                        <span className="text-sm font-medium">{u.name} <span className="text-gray-400">· {u.class}</span></span>
+                        <button type="button" onClick={() => handleAddMember(u.userID)} className="text-blue-600 text-xs font-bold hover:underline">{t('club.add')}</button>
+                      </div>
+                    ))}
+                  {addMemberSearchResults.filter(u => !members.members.some(m => m.userID === u.userID)).length === 0 && (
+                    <p className="text-gray-400 text-sm">{isEn ? 'No new users to add in search results' : '搜索结果中无新用户可添加'}</p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           
           {members.members.length === 0 ? (
             <div className="text-center py-10 text-gray-400 italic">

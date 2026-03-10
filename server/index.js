@@ -2342,6 +2342,68 @@ app.post('/api/clubs/:id/kick-member', async (req, res) => {
   }
 });
 
+// 社长或 super_admin 直接拉用户加入社团（需遵守 block 和人数限制，直接 approved）
+app.post('/api/clubs/:id/add-member', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { targetUserID, operatorID } = req.body;
+    if (!operatorID || !targetUserID) return res.status(400).json({ error: '缺少 operatorID 或 targetUserID' });
+
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+
+    const isFounder = club.founderID === operatorID;
+    const isSuperAdmin = operator.role === 'super_admin';
+    if (!isFounder && !isSuperAdmin) return res.status(403).json({ error: '仅社长或超级管理员可添加用户' });
+
+    const targetUser = await User.findOne({ userID: targetUserID });
+    if (!targetUser) return res.status(404).json({ error: '目标用户不存在' });
+
+    const existing = await ClubMember.findOne({ userID: targetUserID, clubID: club._id });
+    if (existing) {
+      if (existing.status === 'approved') return res.status(400).json({ error: '该用户已是本社团成员' });
+      if (existing.status === 'pending') return res.status(400).json({ error: '该用户已申请，请先审核' });
+    }
+
+    const isWednesdayOrBoth = clubHasWednesday(club.category);
+    if (isWednesdayOrBoth) {
+      const wednesdayMembers = await ClubMember.find({ userID: targetUserID, status: 'approved' }).populate('clubID');
+      const usedBlocks = new Set();
+      for (const m of wednesdayMembers) {
+        if (!m.clubID || m.clubID._id.toString() === id || !clubHasWednesday(m.clubID.category)) continue;
+        (m.clubID.blocks || []).forEach(b => usedBlocks.add(b));
+      }
+      const newBlocks = Array.isArray(club.blocks) ? club.blocks : [];
+      const overlap = newBlocks.some(b => usedBlocks.has(b));
+      if (overlap) return res.status(400).json({ error: '该用户的其他周三社团与此社团时间重叠，无法添加' });
+      if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
+        return res.status(400).json({ error: `该用户周三时段已满（最多 ${WEDNESDAY_BLOCK_LIMIT} 个），无法添加` });
+      }
+    }
+
+    if (club.capacity != null && club.capacity > 0) {
+      const currentCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
+      if (currentCount >= club.capacity) return res.status(400).json({ error: '该社团人数已满，无法添加' });
+    }
+
+    if (existing && existing.status === 'rejected') {
+      existing.status = 'approved';
+      await existing.save();
+    } else {
+      await ClubMember.create({ userID: targetUserID, clubID: club._id, status: 'approved' });
+    }
+
+    io.emit('notification_update', { userID: targetUserID });
+    res.json({ success: true, message: '已添加' });
+  } catch (e) {
+    console.error('添加成员失败:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // ---------- 点名/出勤 ----------
 function isClubCoreOrAdmin(club, userID, user) {
   if (!club || !user) return false;

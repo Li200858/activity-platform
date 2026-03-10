@@ -112,6 +112,9 @@ export const zh = {
     finalConfirm: '最终确认',
     finalConfirmMessage: '确定当前周三社团的选择吗？确认后将无法直接退出社团，只能通过社团轮换改变组合。',
     finalConfirmDone: '已最终确认，如需更改请使用社团轮换',
+    addUser: '添加用户',
+    searchNameOrId: '搜索姓名或ID',
+    add: '添加',
   },
   activity: {
     ongoing: '正在进行的活动',
@@ -419,6 +422,9 @@ export const en = {
     finalConfirm: 'Final confirm',
     finalConfirmMessage: 'Confirm your Wednesday club selection? After confirmation you cannot leave directly; changes must be made via club rotation.',
     finalConfirmDone: 'Confirmed. Use club rotation to make changes.',
+    addUser: 'Add user',
+    searchNameOrId: 'Search name or ID',
+    add: 'Add',
   },
   activity: {
     ongoing: 'Ongoing activities',
