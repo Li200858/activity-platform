@@ -88,6 +88,23 @@ export const api = {
   delete: (url) => axiosInstance.delete(`${API_BASE}${url}`),
 };
 
+// 通过 fetch 下载文件并触发保存（避免 window.open 导致的 ERR_INVALID_RESPONSE）
+const BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
+export const downloadExport = async (path, filename) => {
+  const url = `${BASE_URL}${path}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(err.error || '下载失败');
+  }
+  const blob = await res.blob();
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename || 'export.xlsx';
+  a.click();
+  URL.revokeObjectURL(a.href);
+};
+
 
 
 

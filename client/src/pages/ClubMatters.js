@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../utils/api';
+import { api, downloadExport } from '../utils/api';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslatableContent } from '../components/TranslatableContent';
 
@@ -422,9 +422,14 @@ function ClubMatters({ user }) {
     }
   };
 
-  const exportAttendance = (type) => {
-    const base = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-    window.open(`${base}/api/clubs/${attendanceClub.id}/attendance-sessions/${selectedAttendanceSession.id}/export?userID=${user.userID}&type=${type}`, '_blank');
+  const exportAttendanceForSession = async (sessionId, sessionDate, type) => {
+    try {
+      const path = `/api/clubs/${attendanceClub.id}/attendance-sessions/${sessionId}/export?userID=${user.userID}&type=${type}`;
+      const filename = `${attendanceClub.name}_${sessionDate}_${type === 'absent' ? 'absent' : 'attendance'}.xlsx`;
+      await downloadExport(path, filename);
+    } catch (e) {
+      alert(e.message || '导出失败');
+    }
   };
 
   const fetchVenueRequests = async (clubId) => {
@@ -691,9 +696,10 @@ function ClubMatters({ user }) {
                         {/* 下载Excel按钮 - 社长/核心成员/管理员可见 */}
                         {canManageClub(club) && (
                           <button 
-                            onClick={() => {
-                              const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-                              window.open(`${apiBase}/api/clubs/${club.id}/export?userID=${user.userID}`, '_blank', 'noopener');
+                            onClick={async () => {
+                              try {
+                                await downloadExport(`/api/clubs/${club.id}/export?userID=${user.userID}`, `${club.name || 'club'}_members.xlsx`);
+                              } catch (e) { alert(e.message || '导出失败'); }
                             }}
                             className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
                           >
@@ -1184,8 +1190,8 @@ function ClubMatters({ user }) {
                   <span className="font-medium">{s.date} {s.note && `· ${s.note}`}</span>
                   <div className="flex gap-2">
                     <button onClick={() => loadAttendanceSession(s.id)} className="text-amber-600 text-xs font-bold">编辑</button>
-                    <a href={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/clubs/${attendanceClub.id}/attendance-sessions/${s.id}/export?userID=${user.userID}&type=all`} className="text-green-600 text-xs font-bold" target="_blank" rel="noopener noreferrer">导出出勤</a>
-                    <a href={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/api/clubs/${attendanceClub.id}/attendance-sessions/${s.id}/export?userID=${user.userID}&type=absent`} className="text-red-600 text-xs font-bold" target="_blank" rel="noopener noreferrer">导出缺席</a>
+                    <button type="button" onClick={() => exportAttendanceForSession(s.id, s.date, 'all')} className="text-green-600 text-xs font-bold hover:underline">导出出勤</button>
+                    <button type="button" onClick={() => exportAttendanceForSession(s.id, s.date, 'absent')} className="text-red-600 text-xs font-bold hover:underline">导出缺席</button>
                   </div>
                 </div>
               ))}
@@ -1753,9 +1759,10 @@ function ClubMatters({ user }) {
                 {/* 下载Excel按钮 - 仅创建者和管理员可见 */}
                 {canManageClub(selectedClubDetail) && (
                   <button 
-                    onClick={() => {
-                      const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-                      window.open(`${apiBase}/api/clubs/${selectedClubDetail.id}/export?userID=${user.userID}`, '_blank', 'noopener');
+                    onClick={async () => {
+                      try {
+                        await downloadExport(`/api/clubs/${selectedClubDetail.id}/export?userID=${user.userID}`, `${selectedClubDetail.name || 'club'}_members.xlsx`);
+                      } catch (e) { alert(e.message || '导出失败'); }
                     }}
                     className="px-6 py-3 bg-green-600 text-white rounded-2xl font-black hover:bg-green-700 transition-all"
                   >

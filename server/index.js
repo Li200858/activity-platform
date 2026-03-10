@@ -2459,7 +2459,8 @@ app.get('/api/clubs/:id/attendance-sessions/:sessionId/export', async (req, res)
     XLSX.utils.book_append_sheet(workbook, worksheet, type === 'absent' ? '缺席名单' : '出勤名单');
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(club.name)}_${session.date}_${type === 'absent' ? '缺席' : '出勤'}.xlsx"`);
+    res.setHeader('Content-Length', String(buffer.length));
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(club.name || 'club')}_${session.date}_${type === 'absent' ? 'absent' : 'attendance'}.xlsx"`);
     res.send(buffer);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
