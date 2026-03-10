@@ -2139,6 +2139,18 @@ app.get('/api/clubs/document', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
+// 格式化社团活动时间（用于导出）
+function formatClubActivityTime(club) {
+  const hasWed = club.category === 'wednesday' || club.category === 'both';
+  if (hasWed && club.blocks && club.blocks.length > 0) {
+    const blockLabels = { block1: 'Block1 13:40-14:30', block2: 'Block2 14:30-15:00', block3: 'Block3 15:10-15:50', block4: 'Block4 15:50-16:30' };
+    return club.blocks.map(b => blockLabels[b] || b).join('、');
+  }
+  if (club.time) return club.time;
+  if (club.duration) return `时长${club.duration}`;
+  return '';
+}
+
 // 年级/班级归一化与排序（用于周三社团按年级导出）
 // 年级1: G251-G257, 15/1.5/国际一五；年级2: EE1,TT1,G241-G244；年级3: EE2,TT2,G233,G234；年级4: G224,G225,G231,EE3,NEE4,TT3
 function normalizeClassForGrade(cls) {
@@ -2182,18 +2194,19 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
 
     const workbook = XLSX.utils.book_new();
 
-    // Sheet 1: 社团汇总（社团名、分类、人数、负责人等）
+    // Sheet 1: 社团汇总（社团名、分类、活动时间、人数、负责人等）
     const summaryRows = clubs.map((c, idx) => ({
         '序号': idx + 1,
         '社团名称': c.name || '',
         '分类': c.category === 'wednesday' ? '周三' : c.category === 'daily' ? '日常' : '周三+日常',
+        '活动时间': formatClubActivityTime(c),
         '人数': '', // 占位，下面填充
         '负责人': c.actualLeaderName || (c.founderID ? (userMap.get(c.founderID)?.name || c.founderID) : '')
       }));
     const memberCounts = await Promise.all(clubs.map(c => ClubMember.countDocuments({ clubID: c._id, status: 'approved' })));
     memberCounts.forEach((cnt, i) => { summaryRows[i]['人数'] = cnt; });
     const summaryLabel = category === 'wednesday' ? '周三社团汇总' : category === 'daily' ? '日常社团汇总' : '社团汇总';
-    const summarySheet = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ '序号': '', '社团名称': '暂无社团', '分类': '', '人数': '', '负责人': '' }]);
+    const summarySheet = XLSX.utils.json_to_sheet(summaryRows.length ? summaryRows : [{ '序号': '', '社团名称': '暂无社团', '分类': '', '活动时间': '', '人数': '', '负责人': '' }]);
     XLSX.utils.book_append_sheet(workbook, summarySheet, summaryLabel);
 
     // 仅周三社团：新增「按年级排列」Sheet，列：班级、姓名、周三下午报名的社团（含未报名学生，显示「未选择」）
@@ -2246,9 +2259,10 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
       XLSX.utils.book_append_sheet(workbook, gradeSheet, '按年级排列');
     }
 
-    // 每个社团一个 sheet：成员列表（格式与单个社团导出完全一致：序号、姓名、英文名、班级）
+    // 每个社团一个 sheet：成员列表（序号、姓名、英文名、班级、活动时间）
     for (let i = 0; i < clubs.length; i++) {
       const club = clubs[i];
+      const activityTime = formatClubActivityTime(club);
       const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).sort({ createdAt: 1 }).lean();
       const memberRows = members.length
         ? members.map((m, idx) => {
@@ -2257,10 +2271,11 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
               '序号': idx + 1,
               '姓名': u ? u.name : '',
               '英文名': u ? (u.englishName || '') : '',
-              '班级': u ? u.class : ''
+              '班级': u ? u.class : '',
+              '活动时间': activityTime
             };
           })
-        : [{ '序号': '', '姓名': '暂无成员', '英文名': '', '班级': '' }];
+        : [{ '序号': '', '姓名': '暂无成员', '英文名': '', '班级': '', '活动时间': activityTime }];
       const ws = XLSX.utils.json_to_sheet(memberRows);
       const baseName = (club.name || `社团${i + 1}`).replace(/[:\\/?*\[\]]/g, '');
       const sheetName = (baseName.length > 28 ? baseName.slice(0, 28) : baseName) + `_${i + 1}`;
