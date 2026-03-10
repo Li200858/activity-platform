@@ -791,8 +791,10 @@ app.post('/api/clubs/:id/transfer-founder', async (req, res) => {
           (m.clubID.blocks || []).forEach(b => usedBlocks.add(b));
         }
         const newBlocks = Array.isArray(club.blocks) ? club.blocks : [];
-        const overlap = newBlocks.some(b => usedBlocks.has(b));
-        if (overlap) return res.status(400).json({ error: '目标用户的其他周三社团与此社团时间重叠，无法转交' });
+        if (targetUser.role !== 'super_admin') {
+          const overlap = newBlocks.some(b => usedBlocks.has(b));
+          if (overlap) return res.status(400).json({ error: '目标用户的其他周三社团与此社团时间重叠，无法转交' });
+        }
         if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
           return res.status(400).json({ error: `目标用户周三时段已满，无法加入` });
         }
@@ -875,10 +877,12 @@ app.put('/api/clubs/:id/update-category-type', async (req, res) => {
         if (club.type === 'activity' && blocksArray.includes('block1')) {
           return res.status(400).json({ error: '活动社团不能选择 Block1（学术固定时段）' });
         }
-        // 检查修改后是否与成员的其他周三社团时间重叠
+        // 检查修改后是否与成员的其他周三社团时间重叠（super_admin 豁免，需审核所有老师社团时间会重合）
         const members = await ClubMember.find({ clubID: club._id, status: 'approved' }).lean();
         const conflictNames = [];
         for (const m of members) {
+          const u = await User.findOne({ userID: m.userID }).select('name role').lean();
+          if (u && u.role === 'super_admin') continue; // super_admin 允许时间重叠
           const otherMems = await ClubMember.find({ userID: m.userID, status: 'approved', clubID: { $ne: club._id } }).populate('clubID').lean();
           const usedBlocks = new Set();
           for (const om of otherMems) {
@@ -886,10 +890,7 @@ app.put('/api/clubs/:id/update-category-type', async (req, res) => {
             (om.clubID.blocks || []).forEach(b => usedBlocks.add(b));
           }
           const overlap = blocksArray.some(b => usedBlocks.has(b));
-          if (overlap) {
-            const u = await User.findOne({ userID: m.userID }).select('name').lean();
-            conflictNames.push(u ? u.name : m.userID);
-          }
+          if (overlap) conflictNames.push(u ? u.name : m.userID);
         }
         if (conflictNames.length > 0) {
           return res.status(400).json({ error: `修改后与以下成员的其他周三社团时间重叠，无法保存：${conflictNames.join('、')}` });
@@ -980,8 +981,11 @@ app.post('/api/clubs/register', async (req, res) => {
         blocks.forEach(b => usedBlocks.add(b));
       }
       const newBlocks = Array.isArray(club.blocks) ? club.blocks : [];
-      const overlap = newBlocks.some(b => usedBlocks.has(b));
-      if (overlap) return res.status(400).json({ error: '该社团与您已选的周三社团时间重叠，每个时段只能选一个社团' });
+      const regUser = await User.findOne({ userID }).select('role').lean();
+      if (!regUser || regUser.role !== 'super_admin') {
+        const overlap = newBlocks.some(b => usedBlocks.has(b));
+        if (overlap) return res.status(400).json({ error: '该社团与您已选的周三社团时间重叠，每个时段只能选一个社团' });
+      }
       if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
         return res.status(400).json({ error: `周三最多选 ${WEDNESDAY_BLOCK_LIMIT} 个时段，您已占 ${usedBlocks.size} 个，该社团占 ${newBlocks.length} 个` });
       }
@@ -1101,8 +1105,11 @@ app.post('/api/clubs/rotate', async (req, res) => {
       m.clubID.blocks.forEach(b => usedBlocks.add(b));
     }
     const newBlocks = Array.isArray(newClub.blocks) ? newClub.blocks : [];
-    const overlap = newBlocks.some(b => usedBlocks.has(b));
-    if (overlap) return res.status(400).json({ error: '该社团与您其他周三社团时间重叠' });
+    const rotUser = await User.findOne({ userID }).select('role').lean();
+    if (!rotUser || rotUser.role !== 'super_admin') {
+      const overlap = newBlocks.some(b => usedBlocks.has(b));
+      if (overlap) return res.status(400).json({ error: '该社团与您其他周三社团时间重叠' });
+    }
     if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
       return res.status(400).json({ error: `周三最多 ${WEDNESDAY_BLOCK_LIMIT} 个时段，无法再选该社团` });
     }
@@ -2443,8 +2450,10 @@ app.post('/api/clubs/:id/add-member', async (req, res) => {
         (m.clubID.blocks || []).forEach(b => usedBlocks.add(b));
       }
       const newBlocks = Array.isArray(club.blocks) ? club.blocks : [];
-      const overlap = newBlocks.some(b => usedBlocks.has(b));
-      if (overlap) return res.status(400).json({ error: '该用户的其他周三社团与此社团时间重叠，无法添加' });
+      if (targetUser.role !== 'super_admin') {
+        const overlap = newBlocks.some(b => usedBlocks.has(b));
+        if (overlap) return res.status(400).json({ error: '该用户的其他周三社团与此社团时间重叠，无法添加' });
+      }
       if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
         return res.status(400).json({ error: `该用户周三时段已满（最多 ${WEDNESDAY_BLOCK_LIMIT} 个），无法添加` });
       }
