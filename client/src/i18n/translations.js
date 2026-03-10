@@ -115,6 +115,8 @@ export const zh = {
     addUser: '添加用户',
     searchNameOrId: '搜索姓名或ID',
     add: '添加',
+    transferFounder: '转交创建者身份',
+    transfer: '转交',
   },
   activity: {
     ongoing: '正在进行的活动',
@@ -425,6 +427,8 @@ export const en = {
     addUser: 'Add user',
     searchNameOrId: 'Search name or ID',
     add: 'Add',
+    transferFounder: 'Transfer founder status',
+    transfer: 'Transfer',
   },
   activity: {
     ongoing: 'Ongoing activities',

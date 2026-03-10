@@ -50,6 +50,9 @@ function ClubMatters({ user }) {
   const [addMemberSearchQuery, setAddMemberSearchQuery] = useState('');
   const [addMemberSearchResults, setAddMemberSearchResults] = useState([]);
   const [addMemberSearching, setAddMemberSearching] = useState(false);
+  const [transferFounderSearchQuery, setTransferFounderSearchQuery] = useState('');
+  const [transferFounderSearchResults, setTransferFounderSearchResults] = useState([]);
+  const [transferFounderSearching, setTransferFounderSearching] = useState(false);
 
   useEffect(() => {
     fetchClubs();
@@ -281,6 +284,37 @@ function ClubMatters({ user }) {
       fetchMembers(membersClubId);
     } catch (err) {
       alert(err.response?.data?.error || '添加失败');
+    }
+  };
+
+  const searchUsersForTransferFounder = async () => {
+    if (!transferFounderSearchQuery.trim() || !selectedClubDetail?.id) return;
+    setTransferFounderSearching(true);
+    try {
+      const res = await api.get(`/clubs/${selectedClubDetail.id}/search-users?q=${encodeURIComponent(transferFounderSearchQuery.trim())}&operatorID=${user.userID}`);
+      setTransferFounderSearchResults(Array.isArray(res.data) ? res.data : []);
+    } catch (e) {
+      setTransferFounderSearchResults([]);
+    } finally {
+      setTransferFounderSearching(false);
+    }
+  };
+
+  const handleTransferFounder = async (targetUserID) => {
+    if (!selectedClubDetail?.id) return;
+    if (!window.confirm(isEn ? 'Transfer founder status to this user? You will lose founder privileges.' : '确定将创建者身份转交给该用户？转交后您将失去创建者身份。')) return;
+    try {
+      await api.post(`/clubs/${selectedClubDetail.id}/transfer-founder`, { targetUserID, operatorID: user.userID });
+      alert(isEn ? 'Transfer complete' : '转交成功');
+      setTransferFounderSearchQuery('');
+      setTransferFounderSearchResults([]);
+      const res = await api.get('/clubs/approved');
+      setClubs(res.data);
+      const updated = res.data.find(c => c.id === selectedClubDetail.id);
+      setSelectedClubDetail(updated || null);
+      fetchManagedClubs();
+    } catch (err) {
+      alert(err.response?.data?.error || (isEn ? 'Transfer failed' : '转交失败'));
     }
   };
 
@@ -1317,6 +1351,36 @@ function ClubMatters({ user }) {
                   <>{t('club.creator')}：{selectedClubDetail.founderName || (isEn ? 'Unknown' : '未知')}{selectedClubDetail.founderEnglishName && ` / ${selectedClubDetail.founderEnglishName}`}</>
                 )}
               </p>
+              {selectedClubDetail.founderID === user.userID && (
+                <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-100">
+                  <p className="text-xs font-bold text-amber-800 mb-2">{t('club.transferFounder')}</p>
+                  <div className="flex gap-2 flex-wrap items-end">
+                    <input
+                      type="text"
+                      placeholder={t('club.searchNameOrId')}
+                      value={transferFounderSearchQuery}
+                      onChange={e => setTransferFounderSearchQuery(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && searchUsersForTransferFounder()}
+                      className="flex-1 min-w-[120px] bg-white border rounded-lg px-3 py-2 text-sm"
+                    />
+                    <button type="button" onClick={searchUsersForTransferFounder} disabled={transferFounderSearching} className="text-amber-600 text-sm font-bold px-4 py-2 rounded-lg bg-amber-100 hover:bg-amber-200 transition-colors">
+                      {transferFounderSearching ? (isEn ? 'Searching...' : '搜索中...') : (isEn ? 'Search' : '搜索')}
+                    </button>
+                  </div>
+                  {transferFounderSearchResults.length > 0 && (
+                    <div className="mt-3 space-y-2 max-h-32 overflow-y-auto">
+                      {transferFounderSearchResults
+                        .filter(u => u.userID !== user.userID)
+                        .map(u => (
+                          <div key={u.userID} className="flex justify-between items-center py-2 px-3 bg-white rounded-lg border border-amber-100">
+                            <span className="text-sm font-medium">{u.name} <span className="text-gray-400">· {u.class}</span></span>
+                            <button type="button" onClick={() => handleTransferFounder(u.userID)} className="text-amber-600 text-xs font-bold hover:underline">{t('club.transfer')}</button>
+                          </div>
+                        ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             
             <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
