@@ -524,9 +524,16 @@ function AuditStatus({ user, onAnnouncementsChange }) {
 
               {/* super_admin：全部用户列表（姓名、班级、ID） */}
               <div className="mt-8 pt-6 border-t border-gray-100">
-                <h4 className="text-sm font-bold text-gray-700 mb-3">全部用户列表</h4>
+                <h4 className="text-sm font-bold text-gray-700 mb-3">
+                  {isEn ? 'All users' : '全部用户列表'}
+                  {showAllUsers && (
+                  <span className="ml-2 font-normal text-gray-500">
+                    {isEn ? `(total: ${allUsersList.length} users)` : `(共 ${allUsersList.length} 人)`}
+                  </span>
+                )}
+                </h4>
                 {!showAllUsers ? (
-                  <button onClick={fetchAllUsersList} className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold text-sm hover:bg-purple-700">加载全部用户</button>
+                  <button onClick={fetchAllUsersList} className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold text-sm hover:bg-purple-700">{isEn ? 'Load all users' : '加载全部用户'}</button>
                 ) : (
                   <div className="space-y-2 max-h-96 overflow-y-auto">
                     <div className="grid grid-cols-4 gap-2 text-xs font-bold text-gray-500 pb-2 border-b">
