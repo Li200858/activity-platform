@@ -17,8 +17,16 @@ function ActivityMatters({ user }) {
     phaseTimeStartStart: '', phaseTimeStartEnd: '',
     phaseTimeInProgressStart: '', phaseTimeInProgressEnd: '',
     phaseTimeEndStart: '', phaseTimeEndEnd: '',
-    hasFee: false, feeAmount: ''
+    hasFee: false, feeAmount: '',
+    isPerformance: false
   });
+  const [showSeatEditor, setShowSeatEditor] = useState(false);
+  const [seatEditorZones, setSeatEditorZones] = useState([]);
+  const [seatEditorRows, setSeatEditorRows] = useState([]);
+  const [seatMapData, setSeatMapData] = useState(null);
+  const [perfBookLoading, setPerfBookLoading] = useState(false);
+  const [perfConfirmSeat, setPerfConfirmSeat] = useState(null);
+  const [perfPaymentFile, setPerfPaymentFile] = useState(null);
   const [file, setFile] = useState(null);
   const [paymentQRCode, setPaymentQRCode] = useState(null);
   const [regForm, setRegForm] = useState({
@@ -40,6 +48,81 @@ function ActivityMatters({ user }) {
       setActivities(res.data);
     } catch (e) {
       console.error("获取活动列表失败", e);
+    }
+  };
+
+  const loadSeatState = async (act) => {
+    if (!act?.id) return;
+    setPerfBookLoading(true);
+    setSeatMapData(null);
+    try {
+      const res = await api.get(`/activities/${act.id}/seat-state?userID=${encodeURIComponent(user.userID)}`);
+      setSeatMapData(res.data);
+    } catch (e) {
+      alert(e.response?.data?.error || '加载座位失败');
+      setSeatMapData(null);
+    } finally {
+      setPerfBookLoading(false);
+    }
+  };
+
+  const openPerformanceBook = (act) => {
+    setSelectedActivity(act);
+    setView('performanceBook');
+    setPerfConfirmSeat(null);
+    setPerfPaymentFile(null);
+    loadSeatState(act);
+  };
+
+  const saveSeatLayout = async () => {
+    if (!selectedActivity?.id) return;
+    const zones = seatEditorZones
+      .filter(z => z.name && String(z.name).trim())
+      .map(z => ({ ...z, name: String(z.name).trim(), price: Number(z.price) || 0 }));
+    const rows = seatEditorRows
+      .filter(r => r.zoneId && r.rowLabel && (parseInt(r.seatCount, 10) || 0) > 0)
+      .map(r => ({ zoneId: r.zoneId, rowLabel: String(r.rowLabel).trim(), seatCount: parseInt(r.seatCount, 10) || 0 }));
+    if (zones.length === 0 || rows.length === 0) {
+      alert('请至少添加一个区域和一行座位');
+      return;
+    }
+    try {
+      await api.put(`/activities/${selectedActivity.id}/seat-layout`, {
+        userID: user.userID,
+        seatLayout: { zones, rows }
+      });
+      alert('座位已保存');
+      setShowSeatEditor(false);
+      await fetchActivities();
+      const updated = (await api.get('/activities/approved')).data?.find(a => a.id === selectedActivity.id);
+      if (updated) setSelectedActivity({ ...selectedActivity, ...updated });
+    } catch (e) {
+      alert(e.response?.data?.error || '保存失败');
+    }
+  };
+
+  const submitPerformanceReserve = async () => {
+    if (!perfConfirmSeat || !selectedActivity?.id) return;
+    const needPay = selectedActivity.hasFee || (Number(perfConfirmSeat.price) > 0);
+    if (needPay && !perfPaymentFile) {
+      alert('请先上传付款截图');
+      return;
+    }
+    try {
+      const fd = new FormData();
+      fd.append('userID', user.userID);
+      fd.append('operatorID', user.userID);
+      fd.append('seatKey', perfConfirmSeat.seatKey);
+      if (perfPaymentFile) fd.append('paymentProof', perfPaymentFile);
+      const API_BASE = process.env.REACT_APP_API_URL ? `${process.env.REACT_APP_API_URL}/api` : 'http://localhost:5001/api';
+      await axios.post(`${API_BASE}/activities/${selectedActivity.id}/seat-reserve`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+      alert('选座申请已提交，请等待组织者确认收款');
+      setPerfConfirmSeat(null);
+      setPerfPaymentFile(null);
+      await loadSeatState(selectedActivity);
+      fetchActivities();
+    } catch (e) {
+      alert(e.response?.data?.error || '提交失败');
     }
   };
 
@@ -82,6 +165,7 @@ function ActivityMatters({ user }) {
       
       data.append('organizerID', user.userID);
       data.append('operatorID', user.userID);
+      data.append('isPerformance', String(!!formData.isPerformance));
       if (file) data.append('file', file);
       if (paymentQRCode) data.append('paymentQRCode', paymentQRCode);
 
@@ -96,7 +180,8 @@ function ActivityMatters({ user }) {
         phaseTimeStartStart: '', phaseTimeStartEnd: '',
         phaseTimeInProgressStart: '', phaseTimeInProgressEnd: '',
         phaseTimeEndStart: '', phaseTimeEndEnd: '',
-        hasFee: false, feeAmount: ''
+        hasFee: false, feeAmount: '',
+        isPerformance: false
       });
       setFile(null);
       setPaymentQRCode(null);
@@ -229,7 +314,12 @@ function ActivityMatters({ user }) {
                             <span className="ml-2">{t('activity.organizer')}: {act.organizerName}{act.organizerEnglishName ? ` / ${act.organizerEnglishName}` : ''}{act.organizerClass ? ` (${act.organizerClass})` : ''}</span>
                           )}
                         </p>
-                        {act.capacity && (
+                        {act.isPerformance && act.totalSeatCount > 0 && (
+                          <p className="text-xs text-gray-500 mt-1">
+                            已确认座位: {act.currentRegCount || 0} / {act.totalSeatCount}
+                          </p>
+                        )}
+                        {!act.isPerformance && act.capacity && (
                           <p className="text-xs text-gray-500 mt-1">
                             {t('common.capacity')}: {act.currentRegCount || 0} / {act.capacity}
                           </p>
@@ -297,20 +387,33 @@ function ActivityMatters({ user }) {
                     <div className="text-sm text-gray-600 bg-gray-50 p-3 rounded">
                       <strong>{t('activity.description')}:</strong> {act.description}
                     </div>
-                    <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                    <div className="flex gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                      {act.isPerformance && (
+                        <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-1 rounded font-bold">演出选座</span>
+                      )}
                       <button 
                         onClick={() => {
-                          setSelectedActivity(act);
-                          setView('regForm');
+                          if (act.isPerformance) openPerformanceBook(act);
+                          else { setSelectedActivity(act); setView('regForm'); }
                         }}
-                        disabled={act.capacity && act.currentRegCount >= act.capacity}
+                        disabled={
+                          act.isPerformance
+                            ? (act.totalSeatCount > 0 && act.currentRegCount >= act.totalSeatCount)
+                            : !!(act.capacity && act.currentRegCount >= act.capacity)
+                        }
                         className={`text-xs px-4 py-2 rounded font-bold ${
-                          act.capacity && act.currentRegCount >= act.capacity
+                          (act.isPerformance
+                            ? (act.totalSeatCount > 0 && act.currentRegCount >= act.totalSeatCount)
+                            : (act.capacity && act.currentRegCount >= act.capacity))
                             ? 'bg-gray-400 text-white cursor-not-allowed'
                             : 'bg-blue-500 text-white hover:bg-blue-600'
                         }`}
                       >
-                        {act.capacity && act.currentRegCount >= act.capacity ? t('common.full') : t('activity.register')}
+                        {(act.isPerformance
+                          ? (act.totalSeatCount > 0 && act.currentRegCount >= act.totalSeatCount)
+                          : (act.capacity && act.currentRegCount >= act.capacity))
+                          ? t('common.full')
+                          : (act.isPerformance ? '选座报名' : t('activity.register'))}
                       </button>
                       {/* 参与人员按钮 - 仅组织者和管理员可见 */}
                       {(act.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
@@ -468,6 +571,20 @@ function ActivityMatters({ user }) {
             </div>
           </div>
           
+          <div className="border-t pt-4 mt-4">
+            <div className="flex items-center gap-2 mb-3">
+              <input 
+                type="checkbox" 
+                id="isPerformance"
+                checked={formData.isPerformance}
+                onChange={(e) => setFormData({ ...formData, isPerformance: e.target.checked })}
+                className="w-4 h-4"
+              />
+              <label htmlFor="isPerformance" className="text-lg font-bold cursor-pointer">本活动为演出（参与者选座购票）</label>
+            </div>
+            <p className="text-xs text-gray-500 mb-3 ml-7">开启后活动审核通过，请在「活动详情」中编辑座位区域、排数、座位数与分区票价。若分区票价或全局报名费需线上收款，请勾选下方报名费并上传收款码。</p>
+          </div>
+          
           {/* 报名费功能 */}
           <div className="border-t pt-4 mt-4">
             <div className="flex items-center gap-2 mb-3">
@@ -543,15 +660,17 @@ function ActivityMatters({ user }) {
               return (
                 <div className="absolute z-20 left-0 right-0 mt-1 bg-white border border-gray-200 rounded-xl shadow-lg max-h-60 overflow-auto">
                   {list.map(act => {
-                    const full = act.capacity && act.currentRegCount >= act.capacity;
+                    const full = act.isPerformance
+                      ? (act.totalSeatCount > 0 && act.currentRegCount >= act.totalSeatCount)
+                      : !!(act.capacity && act.currentRegCount >= act.capacity);
                     return (
                       <button
                         key={act.id}
                         type="button"
                         onClick={() => {
                           if (full) return;
-                          setSelectedActivity(act);
-                          setView('regForm');
+                          if (act.isPerformance) openPerformanceBook(act);
+                          else { setSelectedActivity(act); setView('regForm'); }
                           setActivitySearchQuery('');
                         }}
                         disabled={full}
@@ -593,15 +712,27 @@ function ActivityMatters({ user }) {
                     </div>
                   ) : (
                     <button 
-                      onClick={() => { setSelectedActivity(act); setView('regForm'); }} 
-                      disabled={act.capacity && act.currentRegCount >= act.capacity}
+                      onClick={() => {
+                        if (act.isPerformance) openPerformanceBook(act);
+                        else { setSelectedActivity(act); setView('regForm'); }
+                      }} 
+                      disabled={
+                        act.isPerformance
+                          ? (act.totalSeatCount > 0 && act.currentRegCount >= act.totalSeatCount)
+                          : !!(act.capacity && act.currentRegCount >= act.capacity)
+                      }
                       className={`px-4 py-2 rounded ${
-                        act.capacity && act.currentRegCount >= act.capacity
+                        (act.isPerformance
+                          ? (act.totalSeatCount > 0 && act.currentRegCount >= act.totalSeatCount)
+                          : (act.capacity && act.currentRegCount >= act.capacity))
                           ? 'bg-gray-400 text-white cursor-not-allowed'
                           : 'bg-blue-500 text-white hover:bg-blue-600'
                       }`}
                     >
-                      {act.capacity && act.currentRegCount >= act.capacity ? '人数已满' : '去报名'}
+                      {(act.isPerformance
+                        ? (act.totalSeatCount > 0 && act.currentRegCount >= act.totalSeatCount)
+                        : (act.capacity && act.currentRegCount >= act.capacity))
+                        ? '人数已满' : (act.isPerformance ? '选座报名' : '去报名')}
                     </button>
                   )}
                 </div>
@@ -699,7 +830,102 @@ function ActivityMatters({ user }) {
         </div>
       )}
 
-      {view === 'regForm' && selectedActivity && (
+      {view === 'performanceBook' && selectedActivity && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center flex-wrap gap-2">
+            <h2 className="text-xl font-bold">选座 · {selectedActivity.name}</h2>
+            <button type="button" onClick={() => { setView('menu'); setSeatMapData(null); setPerfConfirmSeat(null); }} className="text-gray-500 underline text-sm">返回列表</button>
+          </div>
+          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+            每位用户仅限选择一个座位；提交后不可再选其他座（待审或已确认均算已占用）。
+          </p>
+          {seatMapData?.myReservation && (
+            <p className="text-sm text-gray-800">
+              您当前选座：
+              <span className="font-bold">
+                {' '}
+                {seatMapData.myReservation.zoneName} {seatMapData.myReservation.rowLabel}排 {seatMapData.myReservation.seatLabel}号
+              </span>
+              {seatMapData.myReservation.status === 'pending' ? '（审核中）' : '（已确认）'}
+            </p>
+          )}
+          <p className="text-xs text-gray-600">绿色：可选｜橙色：他人待审｜深黄：我的待审｜蓝色：我已确认｜灰色：已售</p>
+          {perfBookLoading && <p className="text-gray-500">加载座位中…</p>}
+          {seatMapData && !perfBookLoading && (
+            <div className="space-y-6 border rounded-xl p-4 bg-gray-50">
+              {seatMapData.zones.map(zone => (
+                <div key={zone.id}>
+                  <h4 className="font-bold text-gray-800 mb-2">{zone.name} · ¥{zone.price}</h4>
+                  {seatMapData.rows.filter(r => r.zoneId === zone.id).map(row => (
+                    <div key={`${zone.id}_${row.rowLabel}`} className="flex flex-wrap items-center gap-1 mb-2">
+                      <span className="text-xs text-gray-500 w-14 shrink-0">{row.rowLabel}排</span>
+                      <div className="flex flex-wrap gap-1">
+                        {Array.from({ length: row.seatCount }, (_, i) => {
+                          const num = i + 1;
+                          const seatKey = `${zone.id}||${row.rowLabel}||${String(num)}`;
+                          const st = seatMapData.seats[seatKey];
+                          const state = st?.state || 'available';
+                          const label = state === 'available' ? String(num)
+                            : state === 'held' ? '占'
+                            : state === 'pending_mine' ? '审'
+                            : state === 'confirmed_mine' ? '✓'
+                            : '—';
+                          const cls =
+                            state === 'available' ? 'bg-green-200 text-green-900 hover:bg-green-300'
+                            : state === 'held' ? 'bg-orange-200 text-orange-900 cursor-not-allowed'
+                            : state === 'pending_mine' ? 'bg-yellow-300 text-yellow-900'
+                            : state === 'confirmed_mine' ? 'bg-blue-400 text-white'
+                            : 'bg-gray-300 text-gray-600 cursor-not-allowed';
+                          return (
+                            <button
+                              key={seatKey}
+                              type="button"
+                              disabled={state !== 'available'}
+                              title={`${zone.name} ${row.rowLabel}-${num} ¥${st?.price != null ? st.price : zone.price}`}
+                              onClick={() => {
+                                if (state !== 'available') return;
+                                setPerfConfirmSeat({ seatKey, price: st?.price != null ? st.price : zone.price, zoneName: zone.name, rowLabel: row.rowLabel, seatLabel: String(num) });
+                                setPerfPaymentFile(null);
+                              }}
+                              className={`w-8 h-8 text-[10px] rounded font-bold ${cls}`}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+          {perfConfirmSeat && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl space-y-4">
+                <h3 className="font-bold text-lg">确认选座</h3>
+                <p className="text-sm">座位：{perfConfirmSeat.zoneName} {perfConfirmSeat.rowLabel}排 {perfConfirmSeat.seatLabel}号</p>
+                <p className="text-sm">金额：¥{perfConfirmSeat.price}</p>
+                {(selectedActivity.hasFee || Number(perfConfirmSeat.price) > 0) && seatMapData?.paymentQRCode && (
+                  <div>
+                    <p className="text-xs text-gray-600 mb-2">请扫码支付后上传截图</p>
+                    <img src={`${process.env.REACT_APP_API_URL || 'http://localhost:5001'}/uploads/${seatMapData.paymentQRCode}`} alt="qr" className="max-w-[200px] border rounded mx-auto" />
+                  </div>
+                )}
+                {(selectedActivity.hasFee || Number(perfConfirmSeat.price) > 0) && (
+                  <input type="file" accept="image/*" onChange={e => setPerfPaymentFile(e.target.files?.[0] || null)} className="text-sm w-full" />
+                )}
+                <div className="flex gap-2 justify-end">
+                  <button type="button" className="px-4 py-2 rounded-lg bg-gray-200" onClick={() => setPerfConfirmSeat(null)}>取消</button>
+                  <button type="button" className="px-4 py-2 rounded-lg bg-blue-600 text-white font-bold" onClick={submitPerformanceReserve}>提交申请</button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {view === 'regForm' && selectedActivity && !selectedActivity.isPerformance && (
         <form onSubmit={handleRegister} className="grid gap-4">
           <h2 className="text-xl font-bold">活动报名: {selectedActivity.name}</h2>
           <input placeholder="姓名" value={regForm.name} className="border p-2 rounded bg-gray-100" readOnly />
@@ -796,6 +1022,12 @@ function ActivityMatters({ user }) {
                 <>
               <div>
                 <h3 className="font-bold text-lg mb-2">{selectedActivity.name}</h3>
+                {selectedActivity.isPerformance && (
+                  <p className="text-xs font-bold text-amber-800 bg-amber-50 inline-block px-2 py-1 rounded mb-2">演出 · 选座</p>
+                )}
+                {selectedActivity.isPerformance && selectedActivity.totalSeatCount > 0 && (
+                  <p className="text-sm text-gray-600 mb-1">已确认座位：{selectedActivity.currentRegCount || 0} / {selectedActivity.totalSeatCount}</p>
+                )}
                 <p className="text-sm text-gray-600">
                   <strong>地点：</strong>{selectedActivity.location || '（未填写）'}
                 </p>
@@ -958,16 +1190,47 @@ function ActivityMatters({ user }) {
                 {selectedActivity.organizerID !== user.userID && (
                   <button 
                     onClick={() => {
-                      setView('regForm');
+                      if (selectedActivity.isPerformance) openPerformanceBook(selectedActivity);
+                      else setView('regForm');
                     }}
-                    disabled={selectedActivity.capacity && selectedActivity.currentRegCount >= selectedActivity.capacity}
+                    disabled={
+                      selectedActivity.isPerformance
+                        ? (selectedActivity.totalSeatCount > 0 && selectedActivity.currentRegCount >= selectedActivity.totalSeatCount)
+                        : !!(selectedActivity.capacity && selectedActivity.currentRegCount >= selectedActivity.capacity)
+                    }
                     className={`px-4 py-2 rounded font-bold ${
-                      selectedActivity.capacity && selectedActivity.currentRegCount >= selectedActivity.capacity
+                      (selectedActivity.isPerformance
+                        ? (selectedActivity.totalSeatCount > 0 && selectedActivity.currentRegCount >= selectedActivity.totalSeatCount)
+                        : (selectedActivity.capacity && selectedActivity.currentRegCount >= selectedActivity.capacity))
                         ? 'bg-gray-400 text-white cursor-not-allowed'
                         : 'bg-blue-500 text-white hover:bg-blue-600'
                     }`}
                   >
-                    {selectedActivity.capacity && selectedActivity.currentRegCount >= selectedActivity.capacity ? '人数已满' : '去报名'}
+                    {(selectedActivity.isPerformance
+                      ? (selectedActivity.totalSeatCount > 0 && selectedActivity.currentRegCount >= selectedActivity.totalSeatCount)
+                      : (selectedActivity.capacity && selectedActivity.currentRegCount >= selectedActivity.capacity))
+                      ? '人数已满' : (selectedActivity.isPerformance ? '选座报名' : '去报名')}
+                  </button>
+                )}
+                {(selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && selectedActivity.isPerformance && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const lay = selectedActivity.seatLayout;
+                      const zones = Array.isArray(lay?.zones) && lay.zones.length
+                        ? lay.zones.map(z => ({ ...z }))
+                        : [{ id: `z_${Date.now()}`, name: '一楼', price: 5 }];
+                      const zid = zones[0].id;
+                      const rows = Array.isArray(lay?.rows) && lay.rows.length
+                        ? lay.rows.map(r => ({ ...r, zoneId: r.zoneId || zid }))
+                        : [{ zoneId: zid, rowLabel: '1', seatCount: 10 }];
+                      setSeatEditorZones(zones);
+                      setSeatEditorRows(rows);
+                      setShowSeatEditor(true);
+                    }}
+                    className="bg-amber-600 text-white px-4 py-2 rounded font-bold hover:bg-amber-700 text-sm"
+                  >
+                    编辑演出座位
                   </button>
                 )}
                 {(selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
@@ -994,6 +1257,50 @@ function ActivityMatters({ user }) {
               </div>
               </>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showSeatEditor && selectedActivity && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl space-y-4 my-8">
+            <h3 className="font-bold text-lg">编辑演出座位 · {selectedActivity.name}</h3>
+            <p className="text-xs text-gray-500">添加分区名称与单价（元），再添加每排的座位数量。保存后总座位数会同步为活动人数上限。</p>
+            <div className="space-y-2 border rounded-lg p-3 bg-amber-50/50">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-sm">分区</span>
+                <button type="button" className="text-xs text-blue-600 font-bold" onClick={() => setSeatEditorZones(z => [...z, { id: `z_${Date.now()}`, name: '新区', price: 0 }])}>+ 分区</button>
+              </div>
+              {seatEditorZones.map((z, zi) => (
+                <div key={z.id || zi} className="flex flex-wrap gap-2 items-center">
+                  <input className="border rounded px-2 py-1 text-sm flex-1 min-w-[100px]" placeholder="区名 如一楼" value={z.name} onChange={e => setSeatEditorZones(list => list.map((x, i) => i === zi ? { ...x, name: e.target.value } : x))} />
+                  <input type="number" min="0" className="border rounded px-2 py-1 w-24 text-sm" placeholder="票价" value={z.price} onChange={e => setSeatEditorZones(list => list.map((x, i) => i === zi ? { ...x, price: e.target.value } : x))} />
+                </div>
+              ))}
+            </div>
+            <div className="space-y-2 border rounded-lg p-3">
+              <div className="flex justify-between items-center">
+                <span className="font-bold text-sm">排 · 座位数</span>
+                <button type="button" className="text-xs text-blue-600 font-bold" onClick={() => {
+                  const zid = seatEditorZones[0]?.id || '';
+                  setSeatEditorRows(r => [...r, { zoneId: zid, rowLabel: String(r.length + 1), seatCount: 8 }]);
+                }}>+ 一排</button>
+              </div>
+              {seatEditorRows.map((row, ri) => (
+                <div key={ri} className="flex flex-wrap gap-2 items-center">
+                  <select className="border rounded px-2 py-1 text-sm" value={row.zoneId} onChange={e => setSeatEditorRows(list => list.map((x, i) => i === ri ? { ...x, zoneId: e.target.value } : x))}>
+                    {seatEditorZones.map(z => <option key={z.id} value={z.id}>{z.name || z.id}</option>)}
+                  </select>
+                  <input className="border rounded px-2 py-1 w-20 text-sm" placeholder="排号" value={row.rowLabel} onChange={e => setSeatEditorRows(list => list.map((x, i) => i === ri ? { ...x, rowLabel: e.target.value } : x))} />
+                  <input type="number" min="1" className="border rounded px-2 py-1 w-20 text-sm" value={row.seatCount} onChange={e => setSeatEditorRows(list => list.map((x, i) => i === ri ? { ...x, seatCount: e.target.value } : x))} />
+                  <button type="button" className="text-red-500 text-xs" onClick={() => setSeatEditorRows(list => list.filter((_, i) => i !== ri))}>删</button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2 justify-end flex-wrap">
+              <button type="button" className="px-4 py-2 rounded-lg bg-gray-200" onClick={() => setShowSeatEditor(false)}>关闭</button>
+              <button type="button" className="px-4 py-2 rounded-lg bg-amber-600 text-white font-bold" onClick={saveSeatLayout}>保存座位图</button>
             </div>
           </div>
         </div>

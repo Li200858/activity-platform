@@ -844,6 +844,37 @@ function AuditStatus({ user, onAnnouncementsChange }) {
           {t('audit.myApplicationFeedback')}
         </h2>
         
+        <div className="space-y-10">
+          {/* 演出选座：待确认付款（仅展示给创建过活动的用户，避免占位） */}
+          {((data.myActivityStatus && data.myActivityStatus.length > 0) || (data.myPerformanceSeatApprovals || []).length > 0) && (
+          <section className="border border-amber-100 bg-amber-50/40 rounded-2xl p-6">
+            <h3 className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-4">演出座位预定 · 待您确认已收款</h3>
+            <div className="space-y-3">
+              {(!(data.myPerformanceSeatApprovals || []).length) && <p className="text-gray-400 text-sm">暂无待审选座</p>}
+              {(data.myPerformanceSeatApprovals || []).map(r => (
+                <div key={r.id} className="bg-white p-4 rounded-xl border border-amber-100 flex flex-wrap justify-between items-start gap-3">
+                  <div className="flex-1 min-w-[200px]">
+                    <p className="font-bold text-gray-800">{r.activityName || '活动'}</p>
+                    <p className="text-sm text-gray-600 mt-1">
+                      {r.User?.name} · {r.User?.class} · ID: {r.userID}
+                    </p>
+                    <p className="text-sm font-medium text-amber-900 mt-2">
+                      座位：{r.zoneName} {r.rowLabel}排 {r.seatLabel}号 · ¥{r.price != null ? r.price : 0}
+                    </p>
+                    {r.paymentProof && (
+                      <button type="button" onClick={() => setSelectedDetail({ ...r, type: 'performanceSeat' })} className="text-xs text-blue-600 underline mt-2">查看付款截图</button>
+                    )}
+                  </div>
+                  <div className="flex gap-2">
+                    <button type="button" onClick={() => handleApprove('performanceSeat', r.id, 'approved')} className="bg-green-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold">通过</button>
+                    <button type="button" onClick={() => handleApprove('performanceSeat', r.id, 'rejected')} className="bg-red-500 text-white text-xs px-3 py-1.5 rounded-lg font-bold">拒绝</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+          )}
+
         <div className="grid md:grid-cols-2 gap-10">
           {/* 我收到的报名申请 (作为活动组织者) */}
           <section>
@@ -917,6 +948,7 @@ function AuditStatus({ user, onAnnouncementsChange }) {
             </div>
           </section>
         </div>
+        </div>
 
         {/* 我的各项申请状态 */}
         <div className="mt-10 pt-8 border-t border-gray-100">
@@ -951,7 +983,7 @@ function AuditStatus({ user, onAnnouncementsChange }) {
             <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
               {Object.entries(selectedDetail).map(([key, value]) => {
                 // 排除不需要显示的字段
-                if (['id', 'founderID', 'organizerID', 'status', 'type', 'createdAt', 'updatedAt', '_id', '__v'].includes(key)) return null;
+                if (['id', 'founderID', 'organizerID', 'status', 'type', 'createdAt', 'updatedAt', '_id', '__v', 'User', 'seatKey', 'zoneId'].includes(key)) return null;
                 // 跳过空值（除了支付凭证和支付状态）
                 if (!value && key !== 'paymentProof' && key !== 'paymentStatus') return null;
                 
@@ -961,7 +993,8 @@ function AuditStatus({ user, onAnnouncementsChange }) {
                   intro: t('audit.clubIntro'), content: t('audit.activityContent'), location: t('audit.venue'),
                   time: t('audit.venueTime'), duration: t('audit.duration'), weeks: t('audit.weeks'), capacity: t('audit.capacity'),
                   description: t('audit.briefDesc'), flow: t('audit.flow'), requirements: t('audit.requirements'), file: t('audit.attachment'),
-                  activityID: t('audit.activityID'), paymentProof: t('audit.paymentProof'), paymentStatus: t('audit.paymentStatus')
+                  activityID: t('audit.activityID'), paymentProof: t('audit.paymentProof'), paymentStatus: t('audit.paymentStatus'),
+                  activityName: '活动名称', zoneName: '区域', rowLabel: '排', seatLabel: '座', price: '票价(元)'
                 };
 
                 if (key === 'file' && value) {
@@ -1040,19 +1073,23 @@ function AuditStatus({ user, onAnnouncementsChange }) {
               })}
             </div>
 
-            <div className="p-8 bg-gray-50 flex gap-4">
+            <div className="p-8 bg-gray-50 flex gap-4 flex-wrap">
+              {selectedDetail.type !== 'performanceSeat' && (
               <button 
                 onClick={() => handleApprove(selectedDetail.type, selectedDetail.id, 'approved')}
                 className="flex-1 bg-green-600 text-white py-4 rounded-2xl font-black hover:bg-green-700 hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-green-100"
               >
                 {t('audit.approveApplication')}
               </button>
+              )}
+              {selectedDetail.type !== 'performanceSeat' && (
               <button 
                 onClick={() => handleApprove(selectedDetail.type, selectedDetail.id, 'rejected')}
                 className="flex-1 bg-red-600 text-white py-4 rounded-2xl font-black hover:bg-red-700 hover:scale-[1.02] active:scale-95 transition-all shadow-xl shadow-red-100"
               >
                 {t('audit.rejectApplication')}
               </button>
+              )}
               <button 
                 onClick={() => setSelectedDetail(null)}
                 className="px-4 py-4 text-gray-400 font-bold hover:text-gray-600 transition-colors"

@@ -72,7 +72,11 @@ const ActivitySchema = new mongoose.Schema({
   // 付费相关字段
   hasFee: { type: Boolean, default: false },
   feeAmount: { type: String }, // 费用金额（字符串，支持如"50元"这样的格式）
-  paymentQRCode: { type: String } // 支付二维码文件名（微信/支付宝）
+  paymentQRCode: { type: String }, // 支付二维码文件名（微信/支付宝）
+  // 演出选座：是否为演出（选座 + 组织者按付款审核）
+  isPerformance: { type: Boolean, default: false },
+  // 座位图：{ zones: [{ id, name, price }], rows: [{ zoneId, rowLabel, seatCount }] }
+  seatLayout: { type: mongoose.Schema.Types.Mixed, default: null }
 }, { timestamps: true });
 
 // 社团成员模型（同一用户对同一社团只能有一条记录，被拒绝后可再次申请会更新该记录）
@@ -96,6 +100,30 @@ const ActivityRegistrationSchema = new mongoose.Schema({
   paymentStatus: { type: String, enum: ['unpaid', 'paid', 'pending_verification'], default: 'unpaid' }, // 支付状态
   paymentProof: { type: String } // 支付凭证（截图文件名，可选）
 }, { timestamps: true });
+
+// 演出活动座位预定（pending=已选待组织者确认付款；approved=已确认；reject 时删除记录释放座位）
+const ActivitySeatReservationSchema = new mongoose.Schema({
+  activityID: { type: mongoose.Schema.Types.ObjectId, ref: 'Activity', required: true },
+  userID: { type: String, required: true },
+  seatKey: { type: String, required: true },
+  zoneId: { type: String },
+  zoneName: { type: String },
+  rowLabel: { type: String },
+  seatLabel: { type: String },
+  price: { type: Number, default: 0 },
+  paymentProof: { type: String },
+  paymentStatus: { type: String, enum: ['unpaid', 'pending_verification', 'paid'], default: 'unpaid' },
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }
+}, { timestamps: true });
+// 同一活动下 pending/approved 时：每个座位至多一条；每位用户至多一条（防并发双订、一人多座）
+ActivitySeatReservationSchema.index(
+  { activityID: 1, seatKey: 1 },
+  { unique: true, partialFilterExpression: { status: { $in: ['pending', 'approved'] } } }
+);
+ActivitySeatReservationSchema.index(
+  { activityID: 1, userID: 1 },
+  { unique: true, partialFilterExpression: { status: { $in: ['pending', 'approved'] } } }
+);
 
 // 通知模型
 const NotificationSchema = new mongoose.Schema({
@@ -202,6 +230,7 @@ const Club = mongoose.model('Club', ClubSchema);
 const Activity = mongoose.model('Activity', ActivitySchema);
 const ClubMember = mongoose.model('ClubMember', ClubMemberSchema);
 const ActivityRegistration = mongoose.model('ActivityRegistration', ActivityRegistrationSchema);
+const ActivitySeatReservation = mongoose.model('ActivitySeatReservation', ActivitySeatReservationSchema);
 const Notification = mongoose.model('Notification', NotificationSchema);
 const Feedback = mongoose.model('Feedback', FeedbackSchema);
 const SemesterRotation = mongoose.model('SemesterRotation', SemesterRotationSchema);
@@ -241,6 +270,7 @@ module.exports = {
   Activity,
   ClubMember,
   ActivityRegistration,
+  ActivitySeatReservation,
   Feedback,
   Notification,
   SemesterRotation,

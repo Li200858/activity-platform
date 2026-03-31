@@ -11,9 +11,59 @@ const { v4: uuidv4 } = require('uuid');
 const XLSX = require('xlsx');
 const { pinyin } = require('pinyin-pro');
 const { 
-  mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, Feedback, Notification, SemesterRotation,
+  mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, ActivitySeatReservation, Feedback, Notification, SemesterRotation,
   WednesdayConfirmation, ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest,   ClubVenueSchedule, Announcement, IDRecoveryRequest, PinRecoveryRequest
 } = require('./db');
+
+function buildSeatCatalog(layout) {
+  if (!layout || !Array.isArray(layout.zones) || !Array.isArray(layout.rows)) return [];
+  const zoneMap = new Map(layout.zones.map(z => [z.id, z]));
+  const out = [];
+  for (const row of layout.rows) {
+    const z = zoneMap.get(row.zoneId);
+    if (!z) continue;
+    const cnt = Math.max(0, parseInt(row.seatCount, 10) || 0);
+    for (let i = 1; i <= cnt; i++) {
+      const seatLabel = String(i);
+      const seatKey = `${row.zoneId}||${row.rowLabel}||${seatLabel}`;
+      out.push({
+        seatKey,
+        zoneId: row.zoneId,
+        zoneName: z.name || '',
+        rowLabel: row.rowLabel,
+        seatLabel,
+        price: Number(z.price) || 0
+      });
+    }
+  }
+  return out;
+}
+
+function assertUniqueSeatKeys(layout) {
+  const cat = buildSeatCatalog(layout);
+  const keys = cat.map(s => s.seatKey);
+  if (new Set(keys).size !== keys.length) {
+    return '座位编号有重复（同一分区内「排+座号」组合不可重复），请检查';
+  }
+  return null;
+}
+
+function normalizeSeatLayout(body) {
+  if (!body || typeof body !== 'object') return null;
+  const zones = (body.zones || []).map(z => ({
+    id: String(z.id || '').trim() || uuidv4(),
+    name: String(z.name || '').trim() || '区域',
+    price: Math.max(0, Number(z.price) || 0)
+  }));
+  const rows = (body.rows || []).map(r => ({
+    zoneId: String(r.zoneId || '').trim(),
+    rowLabel: String(r.rowLabel || '').trim(),
+    seatCount: Math.max(0, parseInt(r.seatCount, 10) || 0)
+  })).filter(r => r.zoneId && r.rowLabel && r.seatCount > 0);
+  if (zones.length === 0 || rows.length === 0) return null;
+  const zids = new Set(zones.map(z => z.id));
+  return { zones, rows: rows.filter(r => zids.has(r.zoneId)) };
+}
 
 const app = express();
 const server = http.createServer(app);
@@ -1211,6 +1261,13 @@ app.post('/api/activities', uploadMultiple, async (req, res) => {
     const organizerID = req.body.organizerID || '';
     const operatorID = req.body.operatorID || '';
     if (!operatorID || operatorID !== organizerID) return res.status(403).json({ error: '组织者与操作者不一致' });
+    let seatLayoutParsed = null;
+    if (req.body.seatLayoutJson) {
+      try { seatLayoutParsed = normalizeSeatLayout(JSON.parse(req.body.seatLayoutJson)); } catch (_) { seatLayoutParsed = null; }
+    }
+    const isPerf = req.body.isPerformance === 'true' || req.body.isPerformance === true;
+    if (isPerf && seatLayoutParsed && !seatLayoutParsed.rows.length) seatLayoutParsed = null;
+
     const activityData = {
       ...req.body,
       file: req.files && req.files['file'] ? req.files['file'][0].filename : null,
@@ -1223,12 +1280,19 @@ app.post('/api/activities', uploadMultiple, async (req, res) => {
       hasFee: req.body.hasFee === 'true' || req.body.hasFee === true,
       feeAmount: req.body.feeAmount || null,
       paymentQRCode: req.files && req.files['paymentQRCode'] ? req.files['paymentQRCode'][0].filename : null,
-      currentPhase: '活动准备' // 默认阶段
+      currentPhase: '活动准备', // 默认阶段
+      isPerformance: isPerf,
+      seatLayout: isPerf ? seatLayoutParsed : null
     };
     
     // 如果选择了付费但未上传二维码，返回错误
     if (activityData.hasFee && !activityData.paymentQRCode) {
       return res.status(400).json({ error: '选择了报名费功能，必须上传支付二维码' });
+    }
+    // 演出且分区有票价或全局收费：需要收款二维码
+    const perfNeedsPay = isPerf && activityData.seatLayout && activityData.seatLayout.zones.some(z => (Number(z.price) || 0) > 0);
+    if (isPerf && (perfNeedsPay || activityData.hasFee) && !activityData.paymentQRCode) {
+      return res.status(400).json({ error: '演出活动收费时请上传支付二维码（全局报名费或分区票价）' });
     }
     
     const activity = await Activity.create(activityData);
@@ -1252,7 +1316,10 @@ app.get('/api/activities/approved', async (req, res) => {
     const activitiesWithCount = await Promise.all(activities.map(async (act) => {
       const plain = act.toObject();
       plain.id = act._id.toString();
-      const count = await ActivityRegistration.countDocuments({ activityID: act._id, status: 'approved' });
+      const count = plain.isPerformance
+        ? await ActivitySeatReservation.countDocuments({ activityID: act._id, status: 'approved' })
+        : await ActivityRegistration.countDocuments({ activityID: act._id, status: 'approved' });
+      const totalSeatCount = plain.isPerformance ? buildSeatCatalog(plain.seatLayout || {}).length : 0;
       
       // 自动判断并更新当前阶段
       const newPhase = determineCurrentPhase(plain);
@@ -1299,7 +1366,10 @@ app.get('/api/activities/approved', async (req, res) => {
         // 付费相关字段
         hasFee: plain.hasFee || false,
         feeAmount: plain.feeAmount || null,
-        paymentQRCode: plain.paymentQRCode || null
+        paymentQRCode: plain.paymentQRCode || null,
+        isPerformance: !!plain.isPerformance,
+        seatLayout: plain.seatLayout || null,
+        totalSeatCount
       };
     }));
     
@@ -1318,7 +1388,10 @@ app.post('/api/activities/register', upload.single('paymentProof'), async (req, 
     // 检查人数是否已满
     const activity = await Activity.findById(activityID);
     if (!activity) return res.status(404).json({ error: '活动不存在' });
-    
+    if (activity.isPerformance) {
+      return res.status(400).json({ error: '本活动为演出选座报名，请打开活动详情使用选座' });
+    }
+
     if (activity.capacity) {
       const currentRegCount = await ActivityRegistration.countDocuments({ activityID: activity._id, status: 'approved' });
       if (currentRegCount >= activity.capacity) {
@@ -1388,7 +1461,9 @@ app.put('/api/activities/:id/update-info', async (req, res) => {
       const val = capacity === '' || capacity == null ? null : Number(capacity);
       if (val != null && (isNaN(val) || val < 0)) return res.status(400).json({ error: '人数上限必须为非负整数' });
       if (val != null) {
-        const currentCount = await ActivityRegistration.countDocuments({ activityID: act._id, status: 'approved' });
+        const currentCount = act.isPerformance
+          ? await ActivitySeatReservation.countDocuments({ activityID: act._id, status: 'approved' })
+          : await ActivityRegistration.countDocuments({ activityID: act._id, status: 'approved' });
         if (val < currentCount) return res.status(400).json({ error: `人数上限不能小于当前报名人数（${currentCount}人）` });
       }
       act.capacity = val;
@@ -1400,6 +1475,170 @@ app.put('/api/activities/:id/update-info', async (req, res) => {
     actObj.id = act._id.toString();
     res.json({ success: true, activity: actObj });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 演出活动：保存/更新座位图（仅组织者或管理员，活动需已审核通过）
+app.put('/api/activities/:id/seat-layout', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID: operatorID, seatLayout } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 userID' });
+    const act = await Activity.findById(id);
+    if (!act) return res.status(404).json({ error: '活动不存在' });
+    if (!act.isPerformance) return res.status(400).json({ error: '该活动未开启演出选座' });
+    if (act.status !== 'approved') return res.status(400).json({ error: '活动未通过审核，无法配置座位' });
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+    const isOrganizer = act.organizerID === operatorID;
+    const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
+    if (!isOrganizer && !isAdmin) return res.status(403).json({ error: '仅组织者可编辑座位' });
+    const normalized = normalizeSeatLayout(seatLayout);
+    if (!normalized) return res.status(400).json({ error: '请至少添加一个区域和一行座位' });
+    const dupMsg = assertUniqueSeatKeys(normalized);
+    if (dupMsg) return res.status(400).json({ error: dupMsg });
+    const zonePriced = normalized.zones.some(z => (Number(z.price) || 0) > 0);
+    if ((zonePriced || act.hasFee) && !act.paymentQRCode) {
+      return res.status(400).json({ error: '分区有价或已开启报名费，请先在活动详情「编辑」中上传收款二维码后再保存座位' });
+    }
+    const pendingOrApproved = await ActivitySeatReservation.countDocuments({
+      activityID: act._id,
+      status: { $in: ['pending', 'approved'] }
+    });
+    if (pendingOrApproved > 0) {
+      const oldKeys = new Set(buildSeatCatalog(act.seatLayout || {}).map(s => s.seatKey));
+      const newKeys = new Set(buildSeatCatalog(normalized).map(s => s.seatKey));
+      for (const k of oldKeys) {
+        if (!newKeys.has(k)) {
+          const has = await ActivitySeatReservation.findOne({ activityID: act._id, seatKey: k, status: { $in: ['pending', 'approved'] } });
+          if (has) return res.status(400).json({ error: '已有选座预定，无法删除已有座位，可先拒绝或通过后再调整' });
+        }
+      }
+    }
+    act.seatLayout = normalized;
+    const total = buildSeatCatalog(normalized).length;
+    if (total > 0) act.capacity = total;
+    await act.save();
+    const actObj = act.toObject();
+    actObj.id = act._id.toString();
+    res.json({ success: true, activity: actObj, totalSeatCount: total });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 演出：公开座位状态（已登录用户查看可选/已占/我的）
+app.get('/api/activities/:id/seat-state', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID } = req.query;
+    if (!userID) return res.status(400).json({ error: '缺少 userID' });
+    const u = await User.findOne({ userID });
+    if (!u) return res.status(401).json({ error: '用户不存在' });
+    const activity = await Activity.findById(id);
+    if (!activity || activity.status !== 'approved') return res.status(404).json({ error: '活动不存在或未开放' });
+    if (!activity.isPerformance) return res.status(400).json({ error: '该活动不是演出选座' });
+    const catalog = buildSeatCatalog(activity.seatLayout || {});
+    if (catalog.length === 0) return res.status(400).json({ error: '组织者尚未配置座位' });
+    const reservations = await ActivitySeatReservation.find({
+      activityID: activity._id,
+      status: { $in: ['pending', 'approved'] }
+    }).lean();
+    const bySeat = new Map(reservations.map(r => [r.seatKey, r]));
+    const seats = {};
+    for (const s of catalog) {
+      const r = bySeat.get(s.seatKey);
+      if (!r) seats[s.seatKey] = { ...s, state: 'available' };
+      else if (r.status === 'pending') {
+        seats[s.seatKey] = { ...s, state: r.userID === userID ? 'pending_mine' : 'held', resId: r._id.toString() };
+      } else {
+        seats[s.seatKey] = { ...s, state: r.userID === userID ? 'confirmed_mine' : 'sold', resId: r._id.toString() };
+      }
+    }
+    const approvedCount = await ActivitySeatReservation.countDocuments({ activityID: activity._id, status: 'approved' });
+    const total = catalog.length;
+    const mine = reservations.find(r => r.userID === userID);
+    res.json({
+      activityId: id,
+      activityName: activity.name,
+      zones: activity.seatLayout.zones,
+      rows: activity.seatLayout.rows,
+      seats,
+      hasFee: activity.hasFee,
+      paymentQRCode: activity.paymentQRCode,
+      feeAmount: activity.feeAmount,
+      approvedCount,
+      totalSeats: total,
+      isFull: approvedCount >= total,
+      /** 当前用户在此活动下至多一条 pending/approved，用于前端提示「每人仅限一席」 */
+      myReservation: mine
+        ? {
+            seatKey: mine.seatKey,
+            status: mine.status,
+            zoneName: mine.zoneName,
+            rowLabel: mine.rowLabel,
+            seatLabel: mine.seatLabel
+          }
+        : null
+    });
+  } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 演出：提交选座预定（进入 pending，组织者审核付款）
+app.post('/api/activities/:id/seat-reserve', upload.single('paymentProof'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID, operatorID, seatKey } = req.body;
+    if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己选座' });
+    if (!seatKey) return res.status(400).json({ error: '缺少座位' });
+    const activity = await Activity.findById(id);
+    if (!activity || activity.status !== 'approved') return res.status(404).json({ error: '活动不存在' });
+    if (!activity.isPerformance) return res.status(400).json({ error: '该活动不支持选座' });
+    const catalog = buildSeatCatalog(activity.seatLayout || {});
+    const seatMeta = catalog.find(s => s.seatKey === seatKey);
+    if (!seatMeta) return res.status(400).json({ error: '座位无效' });
+    const needPay = activity.hasFee || (seatMeta.price > 0);
+    if (needPay && !req.file) return res.status(400).json({ error: '请上传付款截图后再提交' });
+    const taken = await ActivitySeatReservation.findOne({
+      activityID: activity._id,
+      seatKey,
+      status: { $in: ['pending', 'approved'] }
+    });
+    if (taken) return res.status(400).json({ error: '该座位已被选择或已定出' });
+    const userHas = await ActivitySeatReservation.findOne({
+      activityID: activity._id,
+      userID,
+      status: { $in: ['pending', 'approved'] }
+    });
+    if (userHas) return res.status(400).json({ error: '您已有一个座位预定或已定票，请勿重复选座' });
+    const approvedCount = await ActivitySeatReservation.countDocuments({ activityID: activity._id, status: 'approved' });
+    if (approvedCount >= catalog.length) return res.status(400).json({ error: '票已售罄' });
+
+    const doc = await ActivitySeatReservation.create({
+      activityID: activity._id,
+      userID,
+      seatKey,
+      zoneId: seatMeta.zoneId,
+      zoneName: seatMeta.zoneName,
+      rowLabel: seatMeta.rowLabel,
+      seatLabel: seatMeta.seatLabel,
+      price: seatMeta.price,
+      paymentProof: req.file ? req.file.filename : null,
+      paymentStatus: needPay ? (req.file ? 'pending_verification' : 'unpaid') : 'paid',
+      status: 'pending'
+    });
+    io.emit('notification_update', { userID: activity.organizerID, type: 'performance_seat_pending' });
+    io.emit('activity_seat_updated', { activityID: id });
+    const o = doc.toObject();
+    o.id = doc._id.toString();
+    res.json(o);
+  } catch (e) {
+    if (e && e.code === 11000) {
+      const kp = e.keyPattern || {};
+      if (kp.userID != null) {
+        return res.status(400).json({ error: '每位用户仅限选择一个座位，您已有待审核或已确认的选座记录' });
+      }
+      return res.status(400).json({ error: '该座位已被占用，请刷新页面后重试' });
+    }
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 下载活动参与者Excel - 必须在 /api/activities/:id 之前定义
@@ -1426,33 +1665,66 @@ app.get('/api/activities/:id/export', async (req, res) => {
       return res.status(403).json({ error: '没有权限下载' });
     }
     
-    // 获取所有审核通过的报名者
-    const registrations = await ActivityRegistration.find({
-      activityID: activity._id,
-      status: 'approved'
-    });
-    
-    // 构建Excel数据
-    const data = registrations.length > 0 
-      ? registrations.map((reg, index) => {
-          const regObj = reg.toObject ? reg.toObject() : reg;
-          return {
-            '序号': index + 1,
-            '姓名': regObj.name || '',
-            '班级': regObj.class || '',
-            '用户ID': regObj.userID || '',
-            '联系方式': regObj.contact || '',
-            '申请原因': regObj.reason || ''
-          };
-        })
-      : [{
-          '序号': '',
-          '姓名': '暂无参与者',
-          '班级': '',
-          '用户ID': '',
-          '联系方式': '',
-          '申请原因': ''
-        }];
+    let data;
+    if (activity.isPerformance) {
+      const seatRegs = await ActivitySeatReservation.find({ activityID: activity._id, status: 'approved' }).sort({ createdAt: 1 }).lean();
+      const uids = [...new Set(seatRegs.map(r => r.userID))];
+      const users = uids.length ? await User.find({ userID: { $in: uids } }).select('userID name class englishName').lean() : [];
+      const um = new Map(users.map(u => [u.userID, u]));
+      data = seatRegs.length > 0
+        ? seatRegs.map((r, index) => {
+            const u = um.get(r.userID);
+            return {
+              '序号': index + 1,
+              '姓名': u ? u.name : '',
+              '班级': u ? u.class : '',
+              '用户ID': r.userID || '',
+              '区域': r.zoneName || '',
+              '排': r.rowLabel || '',
+              '座': r.seatLabel || '',
+              '票价': r.price != null ? String(r.price) : '',
+              '联系方式': '',
+              '申请原因': ''
+            };
+          })
+        : [{
+            '序号': '',
+            '姓名': '暂无已确认座位',
+            '班级': '',
+            '用户ID': '',
+            '区域': '',
+            '排': '',
+            '座': '',
+            '票价': '',
+            '联系方式': '',
+            '申请原因': ''
+          }];
+    } else {
+      const registrations = await ActivityRegistration.find({
+        activityID: activity._id,
+        status: 'approved'
+      });
+      data = registrations.length > 0 
+        ? registrations.map((reg, index) => {
+            const regObj = reg.toObject ? reg.toObject() : reg;
+            return {
+              '序号': index + 1,
+              '姓名': regObj.name || '',
+              '班级': regObj.class || '',
+              '用户ID': regObj.userID || '',
+              '联系方式': regObj.contact || '',
+              '申请原因': regObj.reason || ''
+            };
+          })
+        : [{
+            '序号': '',
+            '姓名': '暂无参与者',
+            '班级': '',
+            '用户ID': '',
+            '联系方式': '',
+            '申请原因': ''
+          }];
+    }
     
     const worksheet = XLSX.utils.json_to_sheet(data);
     const workbook = XLSX.utils.book_new();
@@ -1493,33 +1765,54 @@ app.get('/api/activities/:id/participants', async (req, res) => {
     if (!isAdmin && !isOrganizer) {
       return res.status(403).json({ error: '没有权限查看参与者' });
     }
-    
-    // 获取所有审核通过的报名者
-    const registrations = await ActivityRegistration.find({
-      activityID: activity._id,
-      status: 'approved'
-    }).sort({ createdAt: 1 }).lean();
-    
-    const userIDs = [...new Set(registrations.map(r => r.userID).filter(Boolean))];
-    const users = userIDs.length ? await User.find({ userID: { $in: userIDs } }).select('userID name englishName class').lean() : [];
-    const userMap = Object.fromEntries(users.map(u => [u.userID, u]));
-    
-    const participants = registrations.map((reg, index) => {
-      const u = reg.userID ? userMap[reg.userID] : null;
-      return {
-        index: index + 1,
-        name: u ? u.name : (reg.name || ''),
-        class: u ? u.class : (reg.class || ''),
-        englishName: u ? (u.englishName || '') : '',
-        userID: reg.userID || '',
-        contact: reg.contact || '',
-        reason: reg.reason || '',
-        registeredAt: reg.createdAt,
-        paymentStatus: reg.paymentStatus || 'unpaid',
-        paymentProof: reg.paymentProof || null
-      };
-    });
-    
+
+    let participants = [];
+    if (activity.isPerformance) {
+      const seatRegs = await ActivitySeatReservation.find({ activityID: activity._id, status: 'approved' }).sort({ createdAt: 1 }).lean();
+      const userIDs = [...new Set(seatRegs.map(r => r.userID).filter(Boolean))];
+      const users = userIDs.length ? await User.find({ userID: { $in: userIDs } }).select('userID name englishName class').lean() : [];
+      const userMap = Object.fromEntries(users.map(u => [u.userID, u]));
+      participants = seatRegs.map((reg, index) => {
+        const u = reg.userID ? userMap[reg.userID] : null;
+        return {
+          index: index + 1,
+          name: u ? u.name : '',
+          class: u ? u.class : '',
+          englishName: u ? (u.englishName || '') : '',
+          userID: reg.userID || '',
+          contact: '',
+          reason: `${reg.zoneName || ''} ${reg.rowLabel || ''}排 ${reg.seatLabel || ''}号 · ¥${reg.price != null ? reg.price : 0}`,
+          registeredAt: reg.createdAt,
+          paymentStatus: reg.paymentStatus || 'unpaid',
+          paymentProof: reg.paymentProof || null,
+          seatReservation: true
+        };
+      });
+    } else {
+      const registrations = await ActivityRegistration.find({
+        activityID: activity._id,
+        status: 'approved'
+      }).sort({ createdAt: 1 }).lean();
+      const userIDs = [...new Set(registrations.map(r => r.userID).filter(Boolean))];
+      const users = userIDs.length ? await User.find({ userID: { $in: userIDs } }).select('userID name englishName class').lean() : [];
+      const userMap = Object.fromEntries(users.map(u => [u.userID, u]));
+      participants = registrations.map((reg, index) => {
+        const u = reg.userID ? userMap[reg.userID] : null;
+        return {
+          index: index + 1,
+          name: u ? u.name : (reg.name || ''),
+          class: u ? u.class : (reg.class || ''),
+          englishName: u ? (u.englishName || '') : '',
+          userID: reg.userID || '',
+          contact: reg.contact || '',
+          reason: reg.reason || '',
+          registeredAt: reg.createdAt,
+          paymentStatus: reg.paymentStatus || 'unpaid',
+          paymentProof: reg.paymentProof || null
+        };
+      });
+    }
+
     res.json({
       activityName: activity.name,
       participants
@@ -1576,11 +1869,16 @@ app.get('/api/audit/status/:userID', async (req, res) => {
     const myActIDs = myActs.map(a => a._id);
     const myClubIDs = (clubsWhereCanApproveJoin || []).map(c => c._id); // 社长或核心成员可审核的社团
     
-    // 并行查询活动报名申请和社团加入申请（只查询必要字段）
-    const [myActivityRegApprovals, joinApprovals] = await Promise.all([
+    // 并行查询活动报名、演出选座待审、社团加入申请
+    const [myActivityRegApprovals, perfSeatRaw, joinApprovals] = await Promise.all([
       myActIDs.length > 0 
         ? ActivityRegistration.find({ activityID: { $in: myActIDs }, status: 'pending' })
           .select('name class userID status activityID reason contact paymentProof paymentStatus createdAt')
+          .lean()
+        : Promise.resolve([]),
+      myActIDs.length > 0
+        ? ActivitySeatReservation.find({ activityID: { $in: myActIDs }, status: 'pending' })
+          .select('userID activityID seatKey zoneName rowLabel seatLabel price paymentProof paymentStatus createdAt status')
           .lean()
         : Promise.resolve([]),
       myClubIDs.length > 0
@@ -1589,6 +1887,23 @@ app.get('/api/audit/status/:userID', async (req, res) => {
           .lean()
         : Promise.resolve([])
     ]);
+
+    const perfActIds = [...new Set(perfSeatRaw.map(r => r.activityID.toString()))];
+    const perfActs = perfActIds.length ? await Activity.find({ _id: { $in: perfActIds } }).select('name').lean() : [];
+    const perfActNameMap = new Map(perfActs.map(a => [a._id.toString(), a.name]));
+    const perfSeatUserIDs = [...new Set(perfSeatRaw.map(r => r.userID))];
+    const perfSeatUsers = perfSeatUserIDs.length ? await User.find({ userID: { $in: perfSeatUserIDs } }).select('name class userID').lean() : [];
+    const perfSeatUserMap = new Map(perfSeatUsers.map(u => [u.userID, u]));
+    const myPerformanceSeatApprovals = perfSeatRaw.map(r => {
+      const u = perfSeatUserMap.get(r.userID);
+      return {
+        ...r,
+        id: r._id.toString(),
+        activityID: r.activityID.toString(),
+        activityName: perfActNameMap.get(r.activityID.toString()) || '',
+        User: u ? { name: u.name, class: u.class, userID: u.userID } : null
+      };
+    });
     
     // 批量查询所有申请者的用户信息及社团名称
     const approvalUserIDs = [...new Set(joinApprovals.map(a => a.userID))];
@@ -1624,6 +1939,7 @@ app.get('/api/audit/status/:userID', async (req, res) => {
       myActivityStatus,
       myActivityRegStatus,
       myActivityRegApprovals,
+      myPerformanceSeatApprovals,
       myClubJoinApprovals,
       myOwnClubJoinStatus
     };
@@ -1646,6 +1962,7 @@ app.get('/api/audit/status/:userID', async (req, res) => {
       result.allActivityRegs = convertId(result.allActivityRegs);
     }
     result.myActivityRegApprovals = convertId(result.myActivityRegApprovals);
+    // myPerformanceSeatApprovals 已含 id / activityID 字符串
     // myClubJoinApprovals已经在上面转换过了
 
     res.json(result);
@@ -1659,7 +1976,7 @@ app.post('/api/audit/approve', async (req, res) => {
     const op = await User.findOne({ userID: operatorID });
     if (!op) return res.status(401).json({ error: '用户不存在' });
 
-    // 社团加入申请：社团创建者或核心成员可审核，其他类型仅管理员可审核
+    // 社团加入：社长/核心/管理员；活动报名与演出选座：活动组织者或管理员；其余：仅管理员
     if (type === 'clubJoin') {
       const item = await ClubMember.findById(id).populate('clubID');
       if (!item) return res.status(404).json({ error: '申请不存在' });
@@ -1670,6 +1987,23 @@ app.post('/api/audit/approve', async (req, res) => {
       const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
       if (!isAdmin && !isFounder && !isCoreMember) {
         return res.status(403).json({ error: '仅社团创建者、核心成员或管理员可审核加入申请' });
+      }
+    } else if (type === 'activityReg' || type === 'performanceSeat') {
+      let activity = null;
+      if (type === 'activityReg') {
+        const item = await ActivityRegistration.findById(id);
+        if (!item) return res.status(404).json({ error: '报名不存在' });
+        activity = await Activity.findById(item.activityID);
+      } else {
+        const item = await ActivitySeatReservation.findById(id);
+        if (!item) return res.status(404).json({ error: '选座申请不存在' });
+        activity = await Activity.findById(item.activityID);
+      }
+      if (!activity) return res.status(404).json({ error: '活动不存在' });
+      const isAdmin = op.role === 'admin' || op.role === 'super_admin';
+      const isOrganizer = activity.organizerID === operatorID;
+      if (!isAdmin && !isOrganizer) {
+        return res.status(403).json({ error: '仅活动组织者或管理员可审核' });
       }
     } else {
       if (op.role !== 'admin' && op.role !== 'super_admin') return res.status(403).json({ error: '仅管理员可审核' });
@@ -1726,6 +2060,30 @@ app.post('/api/audit/approve', async (req, res) => {
       
       await item.save(); 
       targetUserID = item.userID; 
+    }
+    else if (type === 'performanceSeat') {
+      const item = await ActivitySeatReservation.findById(id);
+      if (!item) return res.status(404).json({ error: '选座申请不存在' });
+      const activity = await Activity.findById(item.activityID);
+      targetUserID = item.userID;
+      if (status === 'approved') {
+        const approvedCount = await ActivitySeatReservation.countDocuments({ activityID: item.activityID, status: 'approved' });
+        const catalog = buildSeatCatalog(activity?.seatLayout || {});
+        if (catalog.length > 0 && approvedCount >= catalog.length) {
+          await ActivitySeatReservation.deleteOne({ _id: item._id });
+          await Notification.create({ userID: targetUserID, type: 'status_update', relatedID: id.toString() });
+          io.emit('notification_update', { userID: targetUserID });
+          io.emit('activity_seat_updated', { activityID: item.activityID.toString() });
+          return res.status(400).json({ error: '该演出已无余票，无法通过' });
+        }
+        item.status = 'approved';
+        item.paymentStatus = 'paid';
+        await item.save();
+        io.emit('activity_seat_updated', { activityID: item.activityID.toString() });
+      } else {
+        await ActivitySeatReservation.deleteOne({ _id: item._id });
+        io.emit('activity_seat_updated', { activityID: item.activityID.toString() });
+      }
     }
     else if (type === 'clubJoin') { 
       const item = await ClubMember.findById(id).populate('clubID');
@@ -1946,7 +2304,8 @@ app.get('/api/notifications/:userID', async (req, res) => {
     const myActIDs = myActs.map(a => a._id);
     if (myActIDs.length > 0) {
       const regCount = await ActivityRegistration.countDocuments({ activityID: { $in: myActIDs }, status: 'pending' });
-      if (regCount > 0) hasAuditTasks = true;
+      const perfSeatPending = await ActivitySeatReservation.countDocuments({ activityID: { $in: myActIDs }, status: 'pending' });
+      if (regCount > 0 || perfSeatPending > 0) hasAuditTasks = true;
     }
 
     // 社团创建者任务 (成员加入审核)
@@ -2058,6 +2417,7 @@ app.delete('/api/admin/users/:userID', async (req, res) => {
     if (foundedClubs > 0) return res.status(400).json({ error: '该用户创建了社团，请先解散或转移后再删除账户' });
     await ClubMember.deleteMany({ userID: targetUserID });
     await ActivityRegistration.deleteMany({ userID: targetUserID });
+    await ActivitySeatReservation.deleteMany({ userID: targetUserID });
     await Feedback.deleteMany({ authorID: targetUserID });
     await Notification.deleteMany({ userID: targetUserID });
     await SemesterRotation.deleteMany({ userID: targetUserID });
@@ -2759,8 +3119,9 @@ app.delete('/api/activities/:id', async (req, res) => {
       return res.status(403).json({ error: '没有权限删除此活动' });
     }
     
-    // 删除所有相关的报名记录
+    // 删除所有相关的报名记录与演出选座
     await ActivityRegistration.deleteMany({ activityID: activity._id });
+    await ActivitySeatReservation.deleteMany({ activityID: activity._id });
     
     // 删除活动
     await activity.deleteOne();
