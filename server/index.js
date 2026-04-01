@@ -42,6 +42,14 @@ function buildSeatCatalog(layout) {
 const MSG_SEAT_TAKEN = '此位置已被选择，请刷新页面后另选座位';
 const MSG_SEAT_LOCKED = '该座位已被预留（内部票），不可选择';
 
+/** Node 禁止 HTTP 头含非 Latin1；中文名用 RFC 5987 的 filename*，filename 仅 ASCII */
+function buildAttachmentDisposition(displayName, asciiFallback = 'export.xlsx') {
+  const utf8Name = String(displayName || 'export.xlsx');
+  const ascii = String(asciiFallback || 'export.xlsx').replace(/[^\x20-\x7E]/g, '_').slice(0, 180);
+  const star = encodeURIComponent(utf8Name);
+  return `attachment; filename="${ascii}"; filename*=UTF-8''${star}`;
+}
+
 function assertUniqueSeatKeys(layout) {
   const cat = buildSeatCatalog(layout);
   const keys = cat.map(s => s.seatKey);
@@ -1859,7 +1867,10 @@ app.get('/api/activities/:id/export', async (req, res) => {
     
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Length', String(buffer.length));
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(activity.name)}_参与者名单.xlsx"`);
+    res.setHeader(
+      'Content-Disposition',
+      buildAttachmentDisposition(`${activity.name}_参与者名单.xlsx`, 'activity_participants.xlsx')
+    );
     res.send(buffer);
   } catch (e) {
     console.error('导出Excel失败:', e);
@@ -2773,7 +2784,10 @@ app.get('/api/admin/clubs/export-all', async (req, res) => {
     const fileName = category === 'wednesday' ? '周三社团人员' : category === 'daily' ? '日常社团人员' : '全部社团人员';
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileName)}_${new Date().toISOString().slice(0, 10)}.xlsx"`);
+    res.setHeader(
+      'Content-Disposition',
+      buildAttachmentDisposition(`${fileName}_${new Date().toISOString().slice(0, 10)}.xlsx`, 'clubs_export.xlsx')
+    );
     res.send(buffer);
   } catch (e) {
     console.error('一键导出社团人员失败:', e);
@@ -3105,7 +3119,13 @@ app.get('/api/clubs/:id/attendance-sessions/:sessionId/export', async (req, res)
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Length', String(buffer.length));
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(club.name || 'club')}_${session.date}_${type === 'absent' ? 'absent' : 'attendance'}.xlsx"`);
+    res.setHeader(
+      'Content-Disposition',
+      buildAttachmentDisposition(
+        `${club.name || 'club'}_${session.date}_${type === 'absent' ? 'absent' : 'attendance'}.xlsx`,
+        'attendance_export.xlsx'
+      )
+    );
     res.send(buffer);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
