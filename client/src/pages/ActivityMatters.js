@@ -74,6 +74,23 @@ function ActivityMatters({ user }) {
     loadSeatState(act);
   };
 
+  /** 组织者/管理员编辑座位图（列表与详情共用） */
+  const openSeatEditorForActivity = (act) => {
+    if (!act?.id) return;
+    const lay = act.seatLayout;
+    const zones = Array.isArray(lay?.zones) && lay.zones.length
+      ? lay.zones.map(z => ({ ...z }))
+      : [{ id: `z_${Date.now()}`, name: '一楼', price: 5 }];
+    const zid = zones[0].id;
+    const rows = Array.isArray(lay?.rows) && lay.rows.length
+      ? lay.rows.map(r => ({ ...r, zoneId: r.zoneId || zid }))
+      : [{ zoneId: zid, rowLabel: '1', seatCount: 10 }];
+    setSelectedActivity(act);
+    setSeatEditorZones(zones);
+    setSeatEditorRows(rows);
+    setShowSeatEditor(true);
+  };
+
   const saveSeatLayout = async () => {
     if (!selectedActivity?.id) return;
     const zones = seatEditorZones
@@ -388,8 +405,22 @@ function ActivityMatters({ user }) {
                       <strong>{t('activity.description')}:</strong> {act.description}
                     </div>
                     <div className="flex gap-2 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                      {act.isPerformance && (
-                        <span className="text-[10px] bg-amber-100 text-amber-800 px-2 py-1 rounded font-bold">演出选座</span>
+                      {act.isPerformance && (act.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                        <button
+                          type="button"
+                          onClick={() => openSeatEditorForActivity(act)}
+                          className="text-xs px-4 py-2 rounded font-bold bg-amber-600 text-white hover:bg-amber-700"
+                        >
+                          编辑演出座位
+                        </button>
+                      )}
+                      {act.isPerformance && !(act.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
+                        <span
+                          className="text-[10px] text-amber-900 border border-dashed border-amber-400 bg-amber-50 px-2 py-1 rounded font-medium self-center"
+                          title="本活动为演出，请使用右侧「选座报名」"
+                        >
+                          演出 · 选座
+                        </span>
                       )}
                       <button 
                         onClick={() => {
@@ -1215,19 +1246,7 @@ function ActivityMatters({ user }) {
                 {(selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && selectedActivity.isPerformance && (
                   <button
                     type="button"
-                    onClick={() => {
-                      const lay = selectedActivity.seatLayout;
-                      const zones = Array.isArray(lay?.zones) && lay.zones.length
-                        ? lay.zones.map(z => ({ ...z }))
-                        : [{ id: `z_${Date.now()}`, name: '一楼', price: 5 }];
-                      const zid = zones[0].id;
-                      const rows = Array.isArray(lay?.rows) && lay.rows.length
-                        ? lay.rows.map(r => ({ ...r, zoneId: r.zoneId || zid }))
-                        : [{ zoneId: zid, rowLabel: '1', seatCount: 10 }];
-                      setSeatEditorZones(zones);
-                      setSeatEditorRows(rows);
-                      setShowSeatEditor(true);
-                    }}
+                    onClick={() => openSeatEditorForActivity(selectedActivity)}
                     className="bg-amber-600 text-white px-4 py-2 rounded font-bold hover:bg-amber-700 text-sm"
                   >
                     编辑演出座位
@@ -1266,11 +1285,28 @@ function ActivityMatters({ user }) {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-xl space-y-4 my-8">
             <h3 className="font-bold text-lg">编辑演出座位 · {selectedActivity.name}</h3>
-            <p className="text-xs text-gray-500">添加分区名称与单价（元），再添加每排的座位数量。保存后总座位数会同步为活动人数上限。</p>
+            <div className="text-xs text-gray-700 space-y-2 border border-gray-200 rounded-lg p-3 bg-gray-50 leading-relaxed">
+              <p className="font-semibold text-gray-800">怎么用（按顺序填）：</p>
+              <ol className="list-decimal pl-4 space-y-1.5">
+                <li>
+                  <strong>分区</strong>：先列出场地里的区域（如一楼、二楼）。每行填「区名」和「票价」——表示<strong>该区域内每个座位</strong>的价格（元）；票价为 0 即免费区。
+                </li>
+                <li>
+                  <strong>排 · 座位数</strong>：用「+ 一排」增加一行，表示<strong>一排座位</strong>。每行从左到右：先选这排属于哪个分区，再填<strong>排号</strong>（会在选座图上显示，如 1、10、A），最后填<strong>这一排有几个座位</strong>。需要多排就多加几行。
+                </li>
+                <li>
+                  <strong>总座位数</strong>＝下面每一排「座位数」相加。点「保存座位图」后，系统会把活动<strong>人数上限</strong>改成这个总数（与可售票数一致）。
+                </li>
+              </ol>
+            </div>
             <div className="space-y-2 border rounded-lg p-3 bg-amber-50/50">
               <div className="flex justify-between items-center">
                 <span className="font-bold text-sm">分区</span>
                 <button type="button" className="text-xs text-blue-600 font-bold" onClick={() => setSeatEditorZones(z => [...z, { id: `z_${Date.now()}`, name: '新区', price: 0 }])}>+ 分区</button>
+              </div>
+              <div className="flex flex-wrap gap-2 items-center text-[10px] text-gray-500 font-medium pl-0.5">
+                <span className="flex-1 min-w-[100px]">分区名称</span>
+                <span className="w-24">单价（元/座）</span>
               </div>
               {seatEditorZones.map((z, zi) => (
                 <div key={z.id || zi} className="flex flex-wrap gap-2 items-center">
@@ -1287,14 +1323,19 @@ function ActivityMatters({ user }) {
                   setSeatEditorRows(r => [...r, { zoneId: zid, rowLabel: String(r.length + 1), seatCount: 8 }]);
                 }}>+ 一排</button>
               </div>
+              <div className="flex flex-wrap gap-2 items-center text-[10px] text-gray-500 font-medium pl-0.5">
+                <span className="min-w-[5.5rem]">所属分区</span>
+                <span className="w-20">排号</span>
+                <span className="w-20">本排座位数</span>
+              </div>
               {seatEditorRows.map((row, ri) => (
                 <div key={ri} className="flex flex-wrap gap-2 items-center">
-                  <select className="border rounded px-2 py-1 text-sm" value={row.zoneId} onChange={e => setSeatEditorRows(list => list.map((x, i) => i === ri ? { ...x, zoneId: e.target.value } : x))}>
+                  <select className="border rounded px-2 py-1 text-sm min-w-[5.5rem]" title="这排属于哪个分区（票价沿用该分区）" value={row.zoneId} onChange={e => setSeatEditorRows(list => list.map((x, i) => i === ri ? { ...x, zoneId: e.target.value } : x))}>
                     {seatEditorZones.map(z => <option key={z.id} value={z.id}>{z.name || z.id}</option>)}
                   </select>
-                  <input className="border rounded px-2 py-1 w-20 text-sm" placeholder="排号" value={row.rowLabel} onChange={e => setSeatEditorRows(list => list.map((x, i) => i === ri ? { ...x, rowLabel: e.target.value } : x))} />
-                  <input type="number" min="1" className="border rounded px-2 py-1 w-20 text-sm" value={row.seatCount} onChange={e => setSeatEditorRows(list => list.map((x, i) => i === ri ? { ...x, seatCount: e.target.value } : x))} />
-                  <button type="button" className="text-red-500 text-xs" onClick={() => setSeatEditorRows(list => list.filter((_, i) => i !== ri))}>删</button>
+                  <input className="border rounded px-2 py-1 w-20 text-sm" placeholder="如 1、A" title="选座图上这一排的标识" value={row.rowLabel} onChange={e => setSeatEditorRows(list => list.map((x, i) => i === ri ? { ...x, rowLabel: e.target.value } : x))} />
+                  <input type="number" min="1" className="border rounded px-2 py-1 w-20 text-sm" placeholder="几座" title="这一排连续有多少个座位" value={row.seatCount} onChange={e => setSeatEditorRows(list => list.map((x, i) => i === ri ? { ...x, seatCount: e.target.value } : x))} />
+                  <button type="button" className="text-red-500 text-xs shrink-0" onClick={() => setSeatEditorRows(list => list.filter((_, i) => i !== ri))}>删</button>
                 </div>
               ))}
             </div>
