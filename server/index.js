@@ -39,6 +39,9 @@ function buildSeatCatalog(layout) {
   return out;
 }
 
+const MSG_SEAT_TAKEN = '此位置已被选择，请刷新页面后另选座位';
+const MSG_SEAT_LOCKED = '该座位已被预留（内部票），不可选择';
+
 function assertUniqueSeatKeys(layout) {
   const cat = buildSeatCatalog(layout);
   const keys = cat.map(s => s.seatKey);
@@ -1310,6 +1313,7 @@ app.post('/api/activities', uploadMultiple, async (req, res) => {
 
 app.get('/api/activities/approved', async (req, res) => {
   try { 
+    const viewerID = req.query.userID ? String(req.query.userID).trim() : '';
     const activities = await Activity.find({ status: 'approved' });
     
     // 为每个活动添加当前报名人数和组织者信息，并自动更新阶段
@@ -1341,6 +1345,26 @@ app.get('/api/activities/approved', async (req, res) => {
           organizerEnglishName = organizer.englishName || null;
         }
       }
+
+      let myPerformanceSeat = null;
+      if (viewerID && plain.isPerformance) {
+        const resv = await ActivitySeatReservation.findOne({
+          activityID: act._id,
+          userID: viewerID,
+          status: { $in: ['pending', 'approved'] }
+        })
+          .select('seatKey zoneName rowLabel seatLabel status')
+          .lean();
+        if (resv) {
+          myPerformanceSeat = {
+            seatKey: resv.seatKey,
+            zoneName: resv.zoneName || '',
+            rowLabel: resv.rowLabel || '',
+            seatLabel: resv.seatLabel || '',
+            status: resv.status
+          };
+        }
+      }
       
       return { 
         ...plain, 
@@ -1369,7 +1393,8 @@ app.get('/api/activities/approved', async (req, res) => {
         paymentQRCode: plain.paymentQRCode || null,
         isPerformance: !!plain.isPerformance,
         seatLayout: plain.seatLayout || null,
-        totalSeatCount
+        totalSeatCount,
+        myPerformanceSeat
       };
     }));
     
@@ -1491,7 +1516,7 @@ app.put('/api/activities/:id/seat-layout', async (req, res) => {
     if (!operator) return res.status(401).json({ error: '用户不存在' });
     const isOrganizer = act.organizerID === operatorID;
     const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
-    if (!isOrganizer && !isAdmin) return res.status(403).json({ error: '仅组织者可编辑座位' });
+    if (!isOrganizer && !isAdmin) return res.status(403).json({ error: '仅活动组织者或管理员可编辑座位' });
     const normalized = normalizeSeatLayout(seatLayout);
     if (!normalized) return res.status(400).json({ error: '请至少添加一个区域和一行座位' });
     const dupMsg = assertUniqueSeatKeys(normalized);
@@ -1517,11 +1542,54 @@ app.put('/api/activities/:id/seat-layout', async (req, res) => {
     act.seatLayout = normalized;
     const total = buildSeatCatalog(normalized).length;
     if (total > 0) act.capacity = total;
+    const newKeySet = new Set(buildSeatCatalog(normalized).map(s => s.seatKey));
+    act.lockedSeatKeys = (act.lockedSeatKeys || []).filter((k) => newKeySet.has(k));
     await act.save();
     const actObj = act.toObject();
     actObj.id = act._id.toString();
     res.json({ success: true, activity: actObj, totalSeatCount: total });
   } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+// 演出：组织者设置预留座位（内部票/锁定为已售），不可与已有选座记录冲突
+app.put('/api/activities/:id/seat-locks', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { userID: operatorID, lockedSeatKeys } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 userID' });
+    if (!Array.isArray(lockedSeatKeys)) return res.status(400).json({ error: 'lockedSeatKeys 须为字符串数组' });
+    const act = await Activity.findById(id);
+    if (!act) return res.status(404).json({ error: '活动不存在' });
+    if (!act.isPerformance) return res.status(400).json({ error: '该活动未开启演出选座' });
+    if (act.status !== 'approved') return res.status(400).json({ error: '活动未通过审核' });
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+    const isOrganizer = act.organizerID === operatorID;
+    const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
+    if (!isOrganizer && !isAdmin) return res.status(403).json({ error: '仅活动组织者或管理员可设置预留座位' });
+    const catalog = buildSeatCatalog(act.seatLayout || {});
+    if (catalog.length === 0) return res.status(400).json({ error: '请先配置座位图' });
+    const valid = new Set(catalog.map((s) => s.seatKey));
+    const normalized = [...new Set(lockedSeatKeys.map((k) => String(k || '').trim()))].filter((k) => valid.has(k));
+    for (const k of normalized) {
+      const has = await ActivitySeatReservation.findOne({
+        activityID: act._id,
+        seatKey: k,
+        status: { $in: ['pending', 'approved'] }
+      });
+      if (has) {
+        return res.status(400).json({ error: '部分座位已有选座/报名记录，无法设为预留，请先处理对应申请' });
+      }
+    }
+    act.lockedSeatKeys = normalized;
+    await act.save();
+    io.emit('activity_seat_updated', { activityID: id });
+    const actObj = act.toObject();
+    actObj.id = act._id.toString();
+    res.json({ success: true, activity: actObj, lockedSeatKeys: normalized });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 演出：公开座位状态（已登录用户查看可选/已占/我的）
@@ -1542,18 +1610,66 @@ app.get('/api/activities/:id/seat-state', async (req, res) => {
       status: { $in: ['pending', 'approved'] }
     }).lean();
     const bySeat = new Map(reservations.map(r => [r.seatKey, r]));
+    const canViewHolders =
+      activity.organizerID === userID || u.role === 'admin' || u.role === 'super_admin';
+    let holderMap = new Map();
+    if (canViewHolders && reservations.length) {
+      const uids = [...new Set(reservations.map((r) => r.userID))];
+      const holders = await User.find({ userID: { $in: uids } }).select('userID name class englishName').lean();
+      holderMap = new Map(holders.map((h) => [h.userID, h]));
+    }
+    const lockedSet = new Set(
+      (activity.lockedSeatKeys || []).filter((k) => catalog.some((c) => c.seatKey === k))
+    );
     const seats = {};
     for (const s of catalog) {
+      if (lockedSet.has(s.seatKey)) {
+        seats[s.seatKey] = { ...s, state: 'locked' };
+        continue;
+      }
       const r = bySeat.get(s.seatKey);
       if (!r) seats[s.seatKey] = { ...s, state: 'available' };
       else if (r.status === 'pending') {
-        seats[s.seatKey] = { ...s, state: r.userID === userID ? 'pending_mine' : 'held', resId: r._id.toString() };
+        const holder = canViewHolders ? holderMap.get(r.userID) : null;
+        seats[s.seatKey] = {
+          ...s,
+          state: r.userID === userID ? 'pending_mine' : 'held',
+          resId: r._id.toString(),
+          ...(holder
+            ? {
+                holderName: holder.name,
+                holderClass: holder.class,
+                holderEnglishName: holder.englishName || '',
+                reservationStatus: 'pending'
+              }
+            : {})
+        };
       } else {
-        seats[s.seatKey] = { ...s, state: r.userID === userID ? 'confirmed_mine' : 'sold', resId: r._id.toString() };
+        const holder = canViewHolders ? holderMap.get(r.userID) : null;
+        seats[s.seatKey] = {
+          ...s,
+          state: r.userID === userID ? 'confirmed_mine' : 'sold',
+          resId: r._id.toString(),
+          ...(holder
+            ? {
+                holderName: holder.name,
+                holderClass: holder.class,
+                holderEnglishName: holder.englishName || '',
+                reservationStatus: 'approved'
+              }
+            : {})
+        };
       }
     }
     const approvedCount = await ActivitySeatReservation.countDocuments({ activityID: activity._id, status: 'approved' });
     const total = catalog.length;
+    const reservedKeys = new Set(reservations.map((r) => r.seatKey));
+    let freeCount = 0;
+    for (const s of catalog) {
+      if (lockedSet.has(s.seatKey)) continue;
+      if (reservedKeys.has(s.seatKey)) continue;
+      freeCount++;
+    }
     const mine = reservations.find(r => r.userID === userID);
     res.json({
       activityId: id,
@@ -1561,12 +1677,13 @@ app.get('/api/activities/:id/seat-state', async (req, res) => {
       zones: activity.seatLayout.zones,
       rows: activity.seatLayout.rows,
       seats,
+      lockedSeatKeys: [...lockedSet],
       hasFee: activity.hasFee,
       paymentQRCode: activity.paymentQRCode,
       feeAmount: activity.feeAmount,
       approvedCount,
       totalSeats: total,
-      isFull: approvedCount >= total,
+      isFull: freeCount <= 0,
       /** 当前用户在此活动下至多一条 pending/approved，用于前端提示「每人仅限一席」 */
       myReservation: mine
         ? {
@@ -1576,7 +1693,8 @@ app.get('/api/activities/:id/seat-state', async (req, res) => {
             rowLabel: mine.rowLabel,
             seatLabel: mine.seatLabel
           }
-        : null
+        : null,
+      canViewSeatHolders: canViewHolders
     });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1594,6 +1712,8 @@ app.post('/api/activities/:id/seat-reserve', upload.single('paymentProof'), asyn
     const catalog = buildSeatCatalog(activity.seatLayout || {});
     const seatMeta = catalog.find(s => s.seatKey === seatKey);
     if (!seatMeta) return res.status(400).json({ error: '座位无效' });
+    const lockedKeys = new Set(activity.lockedSeatKeys || []);
+    if (lockedKeys.has(seatKey)) return res.status(400).json({ error: MSG_SEAT_LOCKED });
     const needPay = activity.hasFee || (seatMeta.price > 0);
     if (needPay && !req.file) return res.status(400).json({ error: '请上传付款截图后再提交' });
     const taken = await ActivitySeatReservation.findOne({
@@ -1601,15 +1721,19 @@ app.post('/api/activities/:id/seat-reserve', upload.single('paymentProof'), asyn
       seatKey,
       status: { $in: ['pending', 'approved'] }
     });
-    if (taken) return res.status(400).json({ error: '该座位已被选择或已定出' });
+    if (taken) return res.status(400).json({ error: MSG_SEAT_TAKEN });
     const userHas = await ActivitySeatReservation.findOne({
       activityID: activity._id,
       userID,
       status: { $in: ['pending', 'approved'] }
     });
     if (userHas) return res.status(400).json({ error: '您已有一个座位预定或已定票，请勿重复选座' });
-    const approvedCount = await ActivitySeatReservation.countDocuments({ activityID: activity._id, status: 'approved' });
-    if (approvedCount >= catalog.length) return res.status(400).json({ error: '票已售罄' });
+    const reservedN = await ActivitySeatReservation.countDocuments({
+      activityID: activity._id,
+      status: { $in: ['pending', 'approved'] }
+    });
+    const lockedN = (activity.lockedSeatKeys || []).filter((k) => catalog.some((c) => c.seatKey === k)).length;
+    if (reservedN + lockedN >= catalog.length) return res.status(400).json({ error: '票已售罄' });
 
     const doc = await ActivitySeatReservation.create({
       activityID: activity._id,
@@ -1635,7 +1759,7 @@ app.post('/api/activities/:id/seat-reserve', upload.single('paymentProof'), asyn
       if (kp.userID != null) {
         return res.status(400).json({ error: '每位用户仅限选择一个座位，您已有待审核或已确认的选座记录' });
       }
-      return res.status(400).json({ error: '该座位已被占用，请刷新页面后重试' });
+      return res.status(400).json({ error: MSG_SEAT_TAKEN });
     }
     res.status(500).json({ error: e.message });
   }

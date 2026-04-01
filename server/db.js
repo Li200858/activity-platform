@@ -76,7 +76,9 @@ const ActivitySchema = new mongoose.Schema({
   // 演出选座：是否为演出（选座 + 组织者按付款审核）
   isPerformance: { type: Boolean, default: false },
   // 座位图：{ zones: [{ id, name, price }], rows: [{ zoneId, rowLabel, seatCount }] }
-  seatLayout: { type: mongoose.Schema.Types.Mixed, default: null }
+  seatLayout: { type: mongoose.Schema.Types.Mixed, default: null },
+  // 组织者预留座位（内部票等）：seatKey 列表，在选座图中显示为已占用且不可选
+  lockedSeatKeys: { type: [String], default: [] }
 }, { timestamps: true });
 
 // 社团成员模型（同一用户对同一社团只能有一条记录，被拒绝后可再次申请会更新该记录）

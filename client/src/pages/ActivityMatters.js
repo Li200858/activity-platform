@@ -25,8 +25,12 @@ function ActivityMatters({ user }) {
   const [seatEditorRows, setSeatEditorRows] = useState([]);
   const [seatMapData, setSeatMapData] = useState(null);
   const [perfBookLoading, setPerfBookLoading] = useState(false);
+  const [perfBookMode, setPerfBookMode] = useState('book'); // 'book' | 'lock'
+  const [lockedKeysDraft, setLockedKeysDraft] = useState([]);
   const [perfConfirmSeat, setPerfConfirmSeat] = useState(null);
   const [perfPaymentFile, setPerfPaymentFile] = useState(null);
+  /** 组织者/管理员查看已占座位的选座人信息 */
+  const [seatHolderModal, setSeatHolderModal] = useState(null);
   const [file, setFile] = useState(null);
   const [paymentQRCode, setPaymentQRCode] = useState(null);
   const [regForm, setRegForm] = useState({
@@ -44,20 +48,28 @@ function ActivityMatters({ user }) {
 
   const fetchActivities = async () => {
     try {
-      const res = await api.get('/activities/approved');
+      const res = await api.get(`/activities/approved?userID=${encodeURIComponent(user.userID)}`);
       setActivities(res.data);
+      setSelectedActivity((prev) => {
+        if (!prev?.id) return prev;
+        const next = res.data.find((a) => a.id === prev.id);
+        return next ? { ...prev, ...next } : prev;
+      });
     } catch (e) {
       console.error("获取活动列表失败", e);
     }
   };
 
-  const loadSeatState = async (act) => {
+  const loadSeatState = async (act, initLockDraft = false) => {
     if (!act?.id) return;
     setPerfBookLoading(true);
     setSeatMapData(null);
     try {
       const res = await api.get(`/activities/${act.id}/seat-state?userID=${encodeURIComponent(user.userID)}`);
       setSeatMapData(res.data);
+      if (initLockDraft) {
+        setLockedKeysDraft([...(res.data.lockedSeatKeys || [])]);
+      }
     } catch (e) {
       alert(e.response?.data?.error || '加载座位失败');
       setSeatMapData(null);
@@ -69,10 +81,41 @@ function ActivityMatters({ user }) {
   const openPerformanceBook = (act) => {
     setSelectedActivity(act);
     setView('performanceBook');
+    setPerfBookMode('book');
+    setLockedKeysDraft([]);
     setPerfConfirmSeat(null);
     setPerfPaymentFile(null);
-    loadSeatState(act);
+    setSeatHolderModal(null);
+    loadSeatState(act, false);
   };
+
+  const openSeatLockEditor = (act) => {
+    if (!act?.id) return;
+    setSelectedActivity(act);
+    setView('performanceBook');
+    setPerfBookMode('lock');
+    setPerfConfirmSeat(null);
+    setPerfPaymentFile(null);
+    setSeatHolderModal(null);
+    loadSeatState(act, true);
+  };
+
+  const saveSeatLocks = async () => {
+    if (!selectedActivity?.id) return;
+    try {
+      await api.put(`/activities/${selectedActivity.id}/seat-locks`, {
+        userID: user.userID,
+        lockedSeatKeys: lockedKeysDraft
+      });
+      alert('预留座位已保存');
+      await loadSeatState(selectedActivity, true);
+      fetchActivities();
+    } catch (e) {
+      alert(e.response?.data?.error || '保存失败');
+    }
+  };
+
+  const isPerfOrg = selectedActivity && (selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin');
 
   /** 组织者/管理员编辑座位图（列表与详情共用） */
   const openSeatEditorForActivity = (act) => {
@@ -111,7 +154,7 @@ function ActivityMatters({ user }) {
       alert('座位已保存');
       setShowSeatEditor(false);
       await fetchActivities();
-      const updated = (await api.get('/activities/approved')).data?.find(a => a.id === selectedActivity.id);
+      const updated = (await api.get(`/activities/approved?userID=${encodeURIComponent(user.userID)}`)).data?.find(a => a.id === selectedActivity.id);
       if (updated) setSelectedActivity({ ...selectedActivity, ...updated });
     } catch (e) {
       alert(e.response?.data?.error || '保存失败');
@@ -345,6 +388,14 @@ function ActivityMatters({ user }) {
                         {act.hasFee && (
                           <p className="text-xs text-orange-600 font-medium mt-1">
                             💰 报名费: {act.feeAmount || '未设置'}
+                          </p>
+                        )}
+                        {act.isPerformance && act.myPerformanceSeat && (
+                          <p className="text-xs text-emerald-800 font-bold mt-2 bg-emerald-50 border border-emerald-200 rounded px-2 py-1.5 max-w-md">
+                            我的座位：{act.myPerformanceSeat.zoneName} {act.myPerformanceSeat.rowLabel}排 {act.myPerformanceSeat.seatLabel}号
+                            <span className="font-normal text-emerald-700">
+                              {act.myPerformanceSeat.status === 'approved' ? '（已确认）' : '（待审核）'}
+                            </span>
                           </p>
                         )}
                       </div>
@@ -864,13 +915,35 @@ function ActivityMatters({ user }) {
       {view === 'performanceBook' && selectedActivity && (
         <div className="space-y-4">
           <div className="flex justify-between items-center flex-wrap gap-2">
-            <h2 className="text-xl font-bold">选座 · {selectedActivity.name}</h2>
-            <button type="button" onClick={() => { setView('menu'); setSeatMapData(null); setPerfConfirmSeat(null); }} className="text-gray-500 underline text-sm">返回列表</button>
+            <h2 className="text-xl font-bold">
+              {perfBookMode === 'lock' ? '预留座位（内部票） · ' : '选座 · '}
+              {selectedActivity.name}
+            </h2>
+            <button
+              type="button"
+              onClick={() => {
+                setView('menu');
+                setSeatMapData(null);
+                setPerfConfirmSeat(null);
+                setPerfBookMode('book');
+                setSeatHolderModal(null);
+              }}
+              className="text-gray-500 underline text-sm"
+            >
+              返回列表
+            </button>
           </div>
-          <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-            每位用户仅限选择一个座位；提交后不可再选其他座（待审或已确认均算已占用）。
-          </p>
-          {seatMapData?.myReservation && (
+          {perfBookMode === 'lock' && isPerfOrg && (
+            <p className="text-xs text-violet-900 bg-violet-50 border border-violet-200 rounded-lg px-3 py-2">
+              点击座位可在「开放选座」与「预留（对外显示为已售）」之间切换。已有选座/待审的座位不可改；已占座位可点击查看选座人姓名与班级。完成后点底部「保存预留」。
+            </p>
+          )}
+          {perfBookMode === 'book' && (
+            <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              每位用户仅限选择一个座位；提交后不可再选其他座（待审或已确认均算已占用）。若与他人同时选同一座，后提交者将提示「此位置已被选择」。
+            </p>
+          )}
+          {perfBookMode === 'book' && seatMapData?.myReservation && (
             <p className="text-sm text-gray-800">
               您当前选座：
               <span className="font-bold">
@@ -880,7 +953,16 @@ function ActivityMatters({ user }) {
               {seatMapData.myReservation.status === 'pending' ? '（审核中）' : '（已确认）'}
             </p>
           )}
-          <p className="text-xs text-gray-600">绿色：可选｜橙色：他人待审｜深黄：我的待审｜蓝色：我已确认｜灰色：已售</p>
+          <p className="text-xs text-gray-600">
+            {perfBookMode === 'lock'
+              ? '绿色：将开放｜紫色：预留（对外显示为已售）｜其他颜色：已有选座记录，不可改'
+              : '绿色：可选｜橙色：他人待审｜深黄：我的待审｜蓝色：我已确认｜灰色：已售或预留'}
+            {isPerfOrg && seatMapData?.canViewSeatHolders && (
+              <span className="block mt-1 text-sky-800">
+                组织者/管理员：点击已占座位（橙/黄/蓝/灰格）可查看该座选座人的姓名与班级。
+              </span>
+            )}
+          </p>
           {perfBookLoading && <p className="text-gray-500">加载座位中…</p>}
           {seatMapData && !perfBookLoading && (
             <div className="space-y-6 border rounded-xl p-4 bg-gray-50">
@@ -895,28 +977,71 @@ function ActivityMatters({ user }) {
                           const num = i + 1;
                           const seatKey = `${zone.id}||${row.rowLabel}||${String(num)}`;
                           const st = seatMapData.seats[seatKey];
-                          const state = st?.state || 'available';
+                          const raw = st?.state || 'available';
+                          let state = raw;
+                          if (perfBookMode === 'lock') {
+                            const inD = lockedKeysDraft.includes(seatKey);
+                            if (inD && raw === 'available') state = 'locked';
+                            if (!inD && raw === 'locked') state = 'available';
+                          }
                           const label = state === 'available' ? String(num)
                             : state === 'held' ? '占'
                             : state === 'pending_mine' ? '审'
                             : state === 'confirmed_mine' ? '✓'
+                            : state === 'locked' ? (perfBookMode === 'lock' ? '预' : '售')
                             : '—';
+                          const holderClickable =
+                            isPerfOrg &&
+                            seatMapData?.canViewSeatHolders &&
+                            (st?.holderName || st?.holderClass) &&
+                            ['held', 'sold', 'pending_mine', 'confirmed_mine'].includes(raw);
                           const cls =
-                            state === 'available' ? 'bg-green-200 text-green-900 hover:bg-green-300'
-                            : state === 'held' ? 'bg-orange-200 text-orange-900 cursor-not-allowed'
-                            : state === 'pending_mine' ? 'bg-yellow-300 text-yellow-900'
-                            : state === 'confirmed_mine' ? 'bg-blue-400 text-white'
-                            : 'bg-gray-300 text-gray-600 cursor-not-allowed';
+                            state === 'available'
+                              ? (perfBookMode === 'lock' ? 'bg-green-200 text-green-900 hover:bg-green-300 cursor-pointer' : 'bg-green-200 text-green-900 hover:bg-green-300')
+                              : state === 'locked'
+                                ? (perfBookMode === 'lock' ? 'bg-violet-400 text-white hover:bg-violet-500 cursor-pointer' : 'bg-gray-300 text-gray-600 cursor-not-allowed')
+                                : state === 'held'
+                                  ? `bg-orange-200 text-orange-900 ${holderClickable ? 'ring-1 ring-sky-500 cursor-pointer hover:opacity-90' : 'cursor-not-allowed'}`
+                                  : state === 'pending_mine'
+                                    ? `bg-yellow-300 text-yellow-900 ${holderClickable ? 'ring-1 ring-sky-500 cursor-pointer hover:opacity-90' : ''}`
+                                    : state === 'confirmed_mine'
+                                      ? `bg-blue-400 text-white ${holderClickable ? 'ring-1 ring-sky-500 cursor-pointer hover:opacity-90' : ''}`
+                                      : `bg-gray-300 text-gray-600 ${holderClickable ? 'ring-1 ring-sky-500 cursor-pointer hover:opacity-90' : 'cursor-not-allowed'}`;
+                          const rawBlocked = ['held', 'pending_mine', 'confirmed_mine', 'sold'].includes(raw);
+                          const lockClickable = perfBookMode === 'lock' && isPerfOrg && !rawBlocked;
+                          const bookClickable = perfBookMode === 'book' && state === 'available';
                           return (
                             <button
                               key={seatKey}
                               type="button"
-                              disabled={state !== 'available'}
-                              title={`${zone.name} ${row.rowLabel}-${num} ¥${st?.price != null ? st.price : zone.price}`}
+                              disabled={!lockClickable && !bookClickable && !holderClickable}
+                              title={
+                                holderClickable
+                                  ? '点击查看选座人姓名与班级'
+                                  : `${zone.name} ${row.rowLabel}-${num} ¥${st?.price != null ? st.price : zone.price}`
+                              }
                               onClick={() => {
-                                if (state !== 'available') return;
-                                setPerfConfirmSeat({ seatKey, price: st?.price != null ? st.price : zone.price, zoneName: zone.name, rowLabel: row.rowLabel, seatLabel: String(num) });
-                                setPerfPaymentFile(null);
+                                if (holderClickable) {
+                                  setSeatHolderModal({
+                                    seatKey,
+                                    zoneName: zone.name,
+                                    rowLabel: row.rowLabel,
+                                    seatLabel: String(num),
+                                    holderName: st.holderName || '—',
+                                    holderClass: st.holderClass || '—',
+                                    holderEnglishName: st.holderEnglishName || '',
+                                    reservationStatus: st.reservationStatus || (raw === 'sold' || raw === 'confirmed_mine' ? 'approved' : 'pending')
+                                  });
+                                  return;
+                                }
+                                if (perfBookMode === 'lock' && lockClickable) {
+                                  setLockedKeysDraft((d) => (d.includes(seatKey) ? d.filter((k) => k !== seatKey) : [...d, seatKey]));
+                                  return;
+                                }
+                                if (perfBookMode === 'book' && state === 'available') {
+                                  setPerfConfirmSeat({ seatKey, price: st?.price != null ? st.price : zone.price, zoneName: zone.name, rowLabel: row.rowLabel, seatLabel: String(num) });
+                                  setPerfPaymentFile(null);
+                                }
                               }}
                               className={`w-8 h-8 text-[10px] rounded font-bold ${cls}`}
                             >
@@ -931,7 +1056,19 @@ function ActivityMatters({ user }) {
               ))}
             </div>
           )}
-          {perfConfirmSeat && (
+          {perfBookMode === 'lock' && isPerfOrg && seatMapData && !perfBookLoading && (
+            <div className="flex flex-wrap gap-2 items-center">
+              <button
+                type="button"
+                onClick={saveSeatLocks}
+                className="px-4 py-2 rounded-lg bg-violet-600 text-white font-bold hover:bg-violet-700"
+              >
+                保存预留
+              </button>
+              <span className="text-xs text-gray-500">当前预留 {lockedKeysDraft.length} 座</span>
+            </div>
+          )}
+          {perfConfirmSeat && perfBookMode === 'book' && (
             <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
               <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl space-y-4">
                 <h3 className="font-bold text-lg">确认选座</h3>
@@ -949,6 +1086,36 @@ function ActivityMatters({ user }) {
                 <div className="flex gap-2 justify-end">
                   <button type="button" className="px-4 py-2 rounded-lg bg-gray-200" onClick={() => setPerfConfirmSeat(null)}>取消</button>
                   <button type="button" className="px-4 py-2 rounded-lg bg-blue-600 text-white font-bold" onClick={submitPerformanceReserve}>提交申请</button>
+                </div>
+              </div>
+            </div>
+          )}
+          {seatHolderModal && (
+            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
+              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl space-y-3">
+                <h3 className="font-bold text-lg">选座人信息</h3>
+                <p className="text-sm text-gray-700">
+                  座位：{seatHolderModal.zoneName} {seatHolderModal.rowLabel}排 {seatHolderModal.seatLabel}号
+                </p>
+                <p className="text-sm">
+                  <span className="text-gray-500">审核状态：</span>
+                  <strong>{seatHolderModal.reservationStatus === 'approved' ? '已通过' : '待审核'}</strong>
+                </p>
+                <p className="text-sm">
+                  <span className="text-gray-500">姓名：</span>
+                  <strong>{seatHolderModal.holderName}</strong>
+                  {seatHolderModal.holderEnglishName ? (
+                    <span className="text-gray-600"> / {seatHolderModal.holderEnglishName}</span>
+                  ) : null}
+                </p>
+                <p className="text-sm">
+                  <span className="text-gray-500">班级：</span>
+                  <strong>{seatHolderModal.holderClass}</strong>
+                </p>
+                <div className="flex justify-end pt-2">
+                  <button type="button" className="px-4 py-2 rounded-lg bg-gray-200 font-medium" onClick={() => setSeatHolderModal(null)}>
+                    关闭
+                  </button>
                 </div>
               </div>
             </div>
@@ -1055,6 +1222,16 @@ function ActivityMatters({ user }) {
                 <h3 className="font-bold text-lg mb-2">{selectedActivity.name}</h3>
                 {selectedActivity.isPerformance && (
                   <p className="text-xs font-bold text-amber-800 bg-amber-50 inline-block px-2 py-1 rounded mb-2">演出 · 选座</p>
+                )}
+                {selectedActivity.isPerformance && selectedActivity.myPerformanceSeat && (
+                  <div className="text-sm border border-emerald-200 bg-emerald-50 text-emerald-900 rounded-lg px-3 py-2 mb-2">
+                    <strong>我的座位：</strong>
+                    {selectedActivity.myPerformanceSeat.zoneName} {selectedActivity.myPerformanceSeat.rowLabel}排 {selectedActivity.myPerformanceSeat.seatLabel}号
+                    <span className="ml-2 text-emerald-700">
+                      {selectedActivity.myPerformanceSeat.status === 'approved' ? '（已确认）' : '（待审核）'}
+                    </span>
+                    <p className="text-xs text-emerald-800 mt-1">在「选座报名」中可查看座位图上的位置。</p>
+                  </div>
                 )}
                 {selectedActivity.isPerformance && selectedActivity.totalSeatCount > 0 && (
                   <p className="text-sm text-gray-600 mb-1">已确认座位：{selectedActivity.currentRegCount || 0} / {selectedActivity.totalSeatCount}</p>
@@ -1244,13 +1421,22 @@ function ActivityMatters({ user }) {
                   </button>
                 )}
                 {(selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && selectedActivity.isPerformance && (
-                  <button
-                    type="button"
-                    onClick={() => openSeatEditorForActivity(selectedActivity)}
-                    className="bg-amber-600 text-white px-4 py-2 rounded font-bold hover:bg-amber-700 text-sm"
-                  >
-                    编辑演出座位
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => openSeatEditorForActivity(selectedActivity)}
+                      className="bg-amber-600 text-white px-4 py-2 rounded font-bold hover:bg-amber-700 text-sm"
+                    >
+                      编辑演出座位
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openSeatLockEditor(selectedActivity)}
+                      className="bg-violet-600 text-white px-4 py-2 rounded font-bold hover:bg-violet-700 text-sm"
+                    >
+                      预留座位（内部票）
+                    </button>
+                  </>
                 )}
                 {(selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                   <>
