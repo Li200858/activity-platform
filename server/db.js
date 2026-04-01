@@ -64,7 +64,8 @@ const ActivitySchema = new mongoose.Schema({
   file: { type: String },
   organizerID: { type: String },
   status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
-  currentPhase: { type: String, default: '活动准备' },
+  /** 已废弃：保留字段兼容旧数据；新活动仅使用 time（活动时间） */
+  currentPhase: { type: String },
   phaseTimePreparation: { type: String },
   phaseTimeStart: { type: String },
   phaseTimeInProgress: { type: String },

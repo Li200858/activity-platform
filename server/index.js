@@ -1200,72 +1200,6 @@ app.post('/api/clubs/rotate', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 自动判断活动当前阶段的辅助函数
-const determineCurrentPhase = (activity) => {
-  const now = moment();
-  
-  // 解析时间字符串（格式：开始时间 - 结束时间 或 单个时间）
-  const parseTimeRange = (timeStr) => {
-    if (!timeStr) return null;
-    const parts = timeStr.split(' - ');
-    if (parts.length === 2) {
-      // 尝试多种时间格式
-      let start = moment(parts[0].trim(), 'YYYY年MM月DD日 HH:mm:ss');
-      let end = moment(parts[1].trim(), 'YYYY年MM月DD日 HH:mm:ss');
-      
-      // 如果解析失败，尝试其他格式
-      if (!start.isValid()) {
-        start = moment(parts[0].trim());
-      }
-      if (!end.isValid()) {
-        end = moment(parts[1].trim());
-      }
-      
-      if (start.isValid() && end.isValid()) {
-        return { start, end };
-      }
-    }
-    // 尝试解析单个时间
-    let singleTime = moment(timeStr.trim(), 'YYYY年MM月DD日 HH:mm:ss');
-    if (!singleTime.isValid()) {
-      singleTime = moment(timeStr.trim());
-    }
-    return singleTime.isValid() ? { start: singleTime, end: null } : null;
-  };
-  
-  const prepTime = parseTimeRange(activity.phaseTimePreparation);
-  const startTime = parseTimeRange(activity.phaseTimeStart);
-  const inProgressTime = parseTimeRange(activity.phaseTimeInProgress);
-  const endTime = parseTimeRange(activity.phaseTimeEnd);
-  
-  // 按时间顺序判断当前处于哪个阶段
-  // 先检查是否已经过了结束阶段
-  if (endTime && endTime.start && now.isAfter(endTime.start)) {
-    return '活动结束';
-  }
-  // 检查是否在活动进行中
-  if (inProgressTime && inProgressTime.start && now.isAfter(inProgressTime.start)) {
-    if (!inProgressTime.end || now.isBefore(inProgressTime.end)) {
-      return '活动中';
-    }
-  }
-  // 检查是否在活动开始阶段
-  if (startTime && startTime.start && now.isAfter(startTime.start)) {
-    if (!startTime.end || now.isBefore(startTime.end)) {
-      return '活动开始';
-    }
-  }
-  // 检查是否在准备阶段
-  if (prepTime && prepTime.start && now.isAfter(prepTime.start)) {
-    if (!prepTime.end || now.isBefore(prepTime.end)) {
-      return '活动准备';
-    }
-  }
-  
-  // 如果所有时间都还没到，返回准备阶段
-  return '活动准备';
-};
-
 // 活动
 app.post('/api/activities', uploadMultiple, async (req, res) => {
   try {
@@ -1279,22 +1213,53 @@ app.post('/api/activities', uploadMultiple, async (req, res) => {
     const isPerf = req.body.isPerformance === 'true' || req.body.isPerformance === true;
     if (isPerf && seatLayoutParsed && !seatLayoutParsed.rows.length) seatLayoutParsed = null;
 
+    const timeStr = String(req.body.time || '').trim();
+    if (!timeStr) {
+      return res.status(400).json({ error: '请填写活动时间（开始与结束）' });
+    }
+    if (!timeStr.includes(' - ')) {
+      return res.status(400).json({ error: '活动时间须同时包含开始与结束时间' });
+    }
+
+    const name = String(req.body.name || '').trim();
+    const location = String(req.body.location || '').trim();
+    const description = String(req.body.description || '').trim();
+    const flow = String(req.body.flow || '').trim();
+    const requirements = String(req.body.requirements || '').trim();
+    if (!name) return res.status(400).json({ error: '请填写活动名称' });
+    if (!location) return res.status(400).json({ error: '请填写地点' });
+    if (!description) return res.status(400).json({ error: '请填写简要描述' });
+    if (!flow) return res.status(400).json({ error: '请填写活动流程' });
+    if (!requirements) return res.status(400).json({ error: '请填写活动需求' });
+    const capRaw = req.body.capacity;
+    const capNum = parseInt(String(capRaw ?? '').trim(), 10);
+    if (capRaw === '' || capRaw === undefined || capRaw === null || Number.isNaN(capNum) || capNum < 1) {
+      return res.status(400).json({ error: '请填写有效的人数上限（至少为 1）' });
+    }
+
     const activityData = {
       ...req.body,
+      name,
+      location,
+      description,
+      flow,
+      requirements,
+      capacity: capNum,
       file: req.files && req.files['file'] ? req.files['file'][0].filename : null,
       status: 'pending',
-      phaseTimePreparation: req.body.phaseTimePreparation || null,
-      phaseTimeStart: req.body.phaseTimeStart || null,
-      phaseTimeInProgress: req.body.phaseTimeInProgress || null,
-      phaseTimeEnd: req.body.phaseTimeEnd || null,
+      time: timeStr,
+      phaseTimePreparation: null,
+      phaseTimeStart: null,
+      phaseTimeInProgress: null,
+      phaseTimeEnd: null,
       // 付费相关字段
       hasFee: req.body.hasFee === 'true' || req.body.hasFee === true,
       feeAmount: req.body.feeAmount || null,
       paymentQRCode: req.files && req.files['paymentQRCode'] ? req.files['paymentQRCode'][0].filename : null,
-      currentPhase: '活动准备', // 默认阶段
       isPerformance: isPerf,
       seatLayout: isPerf ? seatLayoutParsed : null
     };
+    delete activityData.currentPhase;
     
     // 如果选择了付费但未上传二维码，返回错误
     if (activityData.hasFee && !activityData.paymentQRCode) {
@@ -1308,10 +1273,6 @@ app.post('/api/activities', uploadMultiple, async (req, res) => {
     
     const activity = await Activity.create(activityData);
     
-    // 自动判断当前阶段
-    activity.currentPhase = determineCurrentPhase(activity);
-    await activity.save();
-    
     io.emit('notification_update', { type: 'new_audit' });
     const actObj = activity.toObject();
     actObj.id = activity._id.toString();
@@ -1324,7 +1285,7 @@ app.get('/api/activities/approved', async (req, res) => {
     const viewerID = req.query.userID ? String(req.query.userID).trim() : '';
     const activities = await Activity.find({ status: 'approved' });
     
-    // 为每个活动添加当前报名人数和组织者信息，并自动更新阶段
+    // 为每个活动添加当前报名人数和组织者信息
     const activitiesWithCount = await Promise.all(activities.map(async (act) => {
       const plain = act.toObject();
       plain.id = act._id.toString();
@@ -1332,14 +1293,6 @@ app.get('/api/activities/approved', async (req, res) => {
         ? await ActivitySeatReservation.countDocuments({ activityID: act._id, status: 'approved' })
         : await ActivityRegistration.countDocuments({ activityID: act._id, status: 'approved' });
       const totalSeatCount = plain.isPerformance ? buildSeatCatalog(plain.seatLayout || {}).length : 0;
-      
-      // 自动判断并更新当前阶段
-      const newPhase = determineCurrentPhase(plain);
-      if (newPhase !== plain.currentPhase) {
-        act.currentPhase = newPhase;
-        await act.save();
-        plain.currentPhase = newPhase;
-      }
       
       // 获取组织者信息（含英文名）
       let organizerName = null;
@@ -1390,11 +1343,6 @@ app.get('/api/activities/approved', async (req, res) => {
         file: plain.file || null,
         organizerID: plain.organizerID || '',
         status: plain.status || 'pending',
-        currentPhase: plain.currentPhase || '活动准备',
-        phaseTimePreparation: plain.phaseTimePreparation || null,
-        phaseTimeStart: plain.phaseTimeStart || null,
-        phaseTimeInProgress: plain.phaseTimeInProgress || null,
-        phaseTimeEnd: plain.phaseTimeEnd || null,
         // 付费相关字段
         hasFee: plain.hasFee || false,
         feeAmount: plain.feeAmount || null,
@@ -1449,19 +1397,6 @@ app.post('/api/activities/register', upload.single('paymentProof'), async (req, 
     const regObj = reg.toObject();
     regObj.id = reg._id.toString();
     res.json(regObj);
-  } catch (e) { res.status(500).json({ error: e.message }); }
-});
-
-app.put('/api/activities/:id/phase', async (req, res) => {
-  try {
-    const act = await Activity.findById(req.params.id);
-    if (!act) return res.status(404).json({ error: '活动不存在' });
-    act.currentPhase = req.body.phase;
-    await act.save();
-    io.emit('activity_phase_updated', { activityID: req.params.id, phase: req.body.phase });
-    const actObj = act.toObject();
-    actObj.id = act._id.toString();
-    res.json(actObj);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
