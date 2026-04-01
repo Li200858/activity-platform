@@ -10,6 +10,8 @@ const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 const XLSX = require('xlsx');
 const { pinyin } = require('pinyin-pro');
+const { findUserByNameAndClassLoose } = require('./classMatch');
+const { isMailConfigured, sendRecoveryIdEmail, sendRecoveryPinEmail } = require('./mail');
 const { 
   mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, ActivitySeatReservation, Feedback, Notification, SemesterRotation,
   WednesdayConfirmation, ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest,   ClubVenueSchedule, Announcement, IDRecoveryRequest, PinRecoveryRequest
@@ -81,6 +83,12 @@ const server = http.createServer(app);
 const io = socketIO(server, { cors: { origin: "*" } });
 
 const PORT = process.env.PORT || 5001;
+
+if (isMailConfigured()) {
+  console.log('✅ SMTP 已加载:', String(process.env.SMTP_HOST || '').trim(), 'port', process.env.SMTP_PORT || '587');
+} else {
+  console.warn('⚠️ SMTP 未配置完整（需 SMTP_HOST + SMTP_USER + SMTP_PASS），找回邮件将走人工');
+}
 
 app.use(cors());
 app.use(express.json());
@@ -280,26 +288,50 @@ app.put('/api/user/english-name', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 提交找回ID请求（登录页使用）
+// 提交找回ID请求（登录页使用）：匹配到用户且邮件已配置则自动发信，否则进入人工审核
 app.post('/api/id-recovery', async (req, res) => {
   try {
     const { name, class: userClass, email } = req.body;
     if (!name || !userClass || !email) return res.status(400).json({ error: '缺少姓名、班级或邮箱' });
-    // 同一姓名+班级+邮箱只能申请一次
     const n = name.trim(), c = userClass.trim(), e = email.trim().toLowerCase();
-    const allSame = await IDRecoveryRequest.find({ name: n, class: c }).lean();
-    const existing = allSame.find(r => r.email && r.email.toLowerCase() === e);
-    if (existing) return res.status(400).json({ error: '该组合已申请过找回ID，请勿重复提交' });
-    const user = await User.findOne({ name: n, class: c });
-    const userIDFound = user ? user.userID : null;
+    const dupId = await IDRecoveryRequest.findOne({ name: n, email: e }).lean();
+    if (dupId) return res.status(400).json({ error: '该组合已申请过找回ID，请勿重复提交' });
+    const user = await findUserByNameAndClassLoose(User, n, c);
+    const mailOk = isMailConfigured();
+    if (user && mailOk) {
+      try {
+        await sendRecoveryIdEmail(e, user.userID);
+        await IDRecoveryRequest.create({
+          name: n,
+          class: c,
+          email: e,
+          userIDFound: user.userID,
+          status: 'resolved',
+          operatorID: 'system',
+          note: '邮件自动发送',
+          resolvedAt: new Date(),
+          autoProcessed: true
+        });
+        return res.json({ success: true, auto: true });
+      } catch (mailErr) {
+        console.error('id-recovery 自动发信失败，转入人工:', mailErr.message || mailErr);
+        if (mailErr.responseCode != null) console.error('SMTP responseCode:', mailErr.responseCode, mailErr.response);
+      }
+    } else {
+      if (!user) console.warn('id-recovery: 未匹配用户（姓名须与注册完全一致，班级可尝试与系统登记一致）', { name: n, class: c });
+      if (!mailOk) console.warn('id-recovery: SMTP 未就绪（需 SMTP_HOST + SMTP_USER + SMTP_PASS）');
+    }
+    let manualReason = 'mail_send_failed';
+    if (!user) manualReason = 'user_not_matched';
+    else if (!mailOk) manualReason = 'smtp_not_configured';
     const reqDoc = await IDRecoveryRequest.create({
       name: n,
       class: c,
       email: e,
-      userIDFound,
+      userIDFound: user ? user.userID : null,
       status: 'pending'
     });
-    res.json({ success: true, id: reqDoc._id.toString() });
+    res.json({ success: true, auto: false, id: reqDoc._id.toString(), manualReason });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -310,7 +342,12 @@ app.get('/api/admin/id-recovery', async (req, res) => {
     if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
     const op = await User.findOne({ userID: operatorID });
     if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可查看' });
-    const list = await IDRecoveryRequest.find().sort({ createdAt: -1 }).lean();
+    const list = await IDRecoveryRequest.find({
+      $or: [
+        { status: 'pending' },
+        { status: 'resolved', autoProcessed: { $ne: true } }
+      ]
+    }).sort({ createdAt: -1 }).lean();
     res.json(list.map(r => ({ ...r, id: r._id.toString() })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -336,18 +373,49 @@ app.post('/api/admin/id-recovery/:id/resolve', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 提交找回 PIN 请求（流程同 ID 找回）
+// 提交找回 PIN：匹配到用户且邮件已配置则清除 PIN 并自动发信，否则进入人工（清除 PIN + 发 ID）
 app.post('/api/pin-recovery', async (req, res) => {
   try {
     const { name, class: userClass, email } = req.body;
     if (!name || !userClass || !email) return res.status(400).json({ error: '缺少姓名、班级或邮箱' });
     const n = name.trim(), c = userClass.trim(), e = email.trim().toLowerCase();
-    const allSame = await PinRecoveryRequest.find({ name: n, class: c }).lean();
-    const existing = allSame.find(r => r.email && r.email.toLowerCase() === e);
-    if (existing) return res.status(400).json({ error: '该组合已申请过找回 PIN，请勿重复提交' });
-    const user = await User.findOne({ name: n, class: c });
+    const dupPin = await PinRecoveryRequest.findOne({ name: n, email: e }).lean();
+    if (dupPin) return res.status(400).json({ error: '该组合已申请过找回 PIN，请勿重复提交' });
+    const user = await findUserByNameAndClassLoose(User, n, c);
     const userIDFound = user ? user.userID : null;
     const hasPin = user ? !!(user.pinHash) : false;
+    const mailOkPin = isMailConfigured();
+    if (user && mailOkPin) {
+      try {
+        await sendRecoveryPinEmail(e, user.userID);
+        if (user.pinHash) {
+          user.pinHash = null;
+          await user.save();
+        }
+        await PinRecoveryRequest.create({
+          name: n,
+          class: c,
+          email: e,
+          userIDFound,
+          hasPin,
+          status: 'resolved',
+          operatorID: 'system',
+          note: '邮件自动发送，PIN已清除',
+          resolvedAt: new Date(),
+          autoProcessed: true
+        });
+        return res.json({ success: true, auto: true });
+      } catch (mailErr) {
+        console.error('pin-recovery 自动发信失败，转入人工:', mailErr.message || mailErr);
+        if (mailErr.responseCode != null) console.error('SMTP responseCode:', mailErr.responseCode, mailErr.response);
+      }
+    } else {
+      if (!user) console.warn('pin-recovery: 未匹配用户', { name: n, class: c });
+      if (!mailOkPin) console.warn('pin-recovery: SMTP 未就绪');
+    }
+    let manualReasonPin = 'mail_send_failed';
+    if (!user) manualReasonPin = 'user_not_matched';
+    else if (!mailOkPin) manualReasonPin = 'smtp_not_configured';
     const reqDoc = await PinRecoveryRequest.create({
       name: n,
       class: c,
@@ -356,7 +424,7 @@ app.post('/api/pin-recovery', async (req, res) => {
       hasPin,
       status: 'pending'
     });
-    res.json({ success: true, id: reqDoc._id.toString() });
+    res.json({ success: true, auto: false, id: reqDoc._id.toString(), manualReason: manualReasonPin });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -367,7 +435,12 @@ app.get('/api/admin/pin-recovery', async (req, res) => {
     if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
     const op = await User.findOne({ userID: operatorID });
     if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可查看' });
-    const list = await PinRecoveryRequest.find().sort({ createdAt: -1 }).lean();
+    const list = await PinRecoveryRequest.find({
+      $or: [
+        { status: 'pending' },
+        { status: 'resolved', autoProcessed: { $ne: true } }
+      ]
+    }).sort({ createdAt: -1 }).lean();
     res.json(list.map(r => ({ ...r, id: r._id.toString() })));
   } catch (e) { res.status(500).json({ error: e.message }); }
 });

@@ -87,12 +87,24 @@ function Login({ onLogin, onRegister }) {
     }
     try {
       const endpoint = loginMode === 'pin' ? '/pin-recovery' : '/id-recovery';
-      await api.post(endpoint, {
+      const { data } = await api.post(endpoint, {
         name: recovery.name.trim(),
         class: recovery.class.trim(),
         email: recovery.email.trim()
       });
-      setRecoveryMessage(t('login.recoverySuccess'));
+      if (data?.auto) {
+        setRecoveryMessage(t('login.recoverySuccessAuto'));
+      } else {
+        const manualKey =
+          data?.manualReason === 'user_not_matched'
+            ? 'login.recoveryManualUserNotMatched'
+            : data?.manualReason === 'smtp_not_configured'
+              ? 'login.recoveryManualSmtp'
+              : data?.manualReason === 'mail_send_failed'
+                ? 'login.recoveryManualMailFail'
+                : null;
+        setRecoveryMessage(manualKey ? t(manualKey) : t('login.recoverySuccess'));
+      }
     } catch (err) {
       setRecoveryMessage(err.response?.data?.error || t('login.recoveryFail'));
     }

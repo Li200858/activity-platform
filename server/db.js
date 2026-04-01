@@ -210,8 +210,9 @@ const IDRecoveryRequestSchema = new mongoose.Schema({
   userIDFound: { type: String }, // 系统根据姓名+班级预匹配到的 userID（如有）
   status: { type: String, enum: ['pending', 'resolved'], default: 'pending' },
   note: { type: String },
-  operatorID: { type: String }, // 处理该请求的管理员ID
-  resolvedAt: { type: Date }
+  operatorID: { type: String }, // 处理该请求的管理员ID；系统自动处理时为 'system'
+  resolvedAt: { type: Date },
+  autoProcessed: { type: Boolean, default: false } // 邮件自动发送，不进入管理员待办
 }, { timestamps: true });
 
 // 用户找回PIN请求（流程同ID找回，管理员清除PIN后用户可用ID登录并重新设置）
@@ -224,7 +225,8 @@ const PinRecoveryRequestSchema = new mongoose.Schema({
   status: { type: String, enum: ['pending', 'resolved'], default: 'pending' },
   note: { type: String },
   operatorID: { type: String },
-  resolvedAt: { type: Date }
+  resolvedAt: { type: Date },
+  autoProcessed: { type: Boolean, default: false }
 }, { timestamps: true });
 
 // 创建模型
