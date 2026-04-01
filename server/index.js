@@ -1858,6 +1858,7 @@ app.get('/api/activities/:id/export', async (req, res) => {
     const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' });
     
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Length', String(buffer.length));
     res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(activity.name)}_参与者名单.xlsx"`);
     res.send(buffer);
   } catch (e) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { api } from '../utils/api';
+import { api, downloadExport } from '../utils/api';
 import axios from 'axios';
 import { useLanguage } from '../context/LanguageContext';
 import { TranslatableContent } from '../components/TranslatableContent';
@@ -116,6 +116,19 @@ function ActivityMatters({ user }) {
   };
 
   const isPerfOrg = selectedActivity && (selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin');
+
+  /** 与社团导出一致：fetch 拉取二进制再触发本地下载，避免 <a href> 跨域/无法保存 */
+  const downloadActivityParticipantsExcel = async (activityId, activityName) => {
+    try {
+      const safe = String(activityName || '活动').replace(/[/\\?%*:|"<>]/g, '_');
+      await downloadExport(
+        `/api/activities/${activityId}/export?userID=${encodeURIComponent(user.userID)}`,
+        `${safe}_参与者名单.xlsx`
+      );
+    } catch (e) {
+      alert(e.message || '下载失败');
+    }
+  };
 
   /** 组织者/管理员编辑座位图（列表与详情共用） */
   const openSeatEditorForActivity = (act) => {
@@ -512,12 +525,10 @@ function ActivityMatters({ user }) {
                       {/* 下载Excel按钮 - 仅组织者和管理员可见 */}
                       {(act.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                         <button 
-                          onClick={(e) => {
+                          type="button"
+                          onClick={async (e) => {
                             e.stopPropagation();
-                            const link = document.createElement('a');
-                            const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-                            link.href = `${apiBase}/api/activities/${act.id}/export?userID=${user.userID}`;
-                            link.click();
+                            await downloadActivityParticipantsExcel(act.id, act.name);
                           }}
                           className="bg-green-600 text-white text-xs px-4 py-2 rounded font-bold hover:bg-green-700"
                         >
@@ -1447,12 +1458,8 @@ function ActivityMatters({ user }) {
                       参与人员
                     </button>
                     <button 
-                      onClick={() => {
-                        const link = document.createElement('a');
-                        const apiBase = process.env.REACT_APP_API_URL || 'http://localhost:5001';
-                        link.href = `${apiBase}/api/activities/${selectedActivity.id}/export?userID=${user.userID}`;
-                        link.click();
-                      }}
+                      type="button"
+                      onClick={() => downloadActivityParticipantsExcel(selectedActivity.id, selectedActivity.name)}
                       className="bg-green-600 text-white px-4 py-2 rounded font-bold hover:bg-green-700"
                     >
                       下载参与者Excel
