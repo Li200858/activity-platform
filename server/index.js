@@ -12,6 +12,7 @@ const XLSX = require('xlsx');
 const { pinyin } = require('pinyin-pro');
 const { findUserByNameAndClassLoose } = require('./classMatch');
 const { isMailConfigured, sendRecoveryIdEmail, sendRecoveryPinEmail } = require('./mail');
+const { seatBookingNamesConflict } = require('./seatNameConflict');
 const { 
   mongoose, sequelize, User, Club, Activity, ClubMember, ActivityRegistration, ActivitySeatReservation, Feedback, Notification, SemesterRotation,
   WednesdayConfirmation, ClubAttendanceSession, ClubAttendanceRecord, ClubVenueRequest,   ClubVenueSchedule, Announcement, IDRecoveryRequest, PinRecoveryRequest
@@ -1522,7 +1523,7 @@ app.put('/api/activities/:id/update-info', async (req, res) => {
 app.put('/api/activities/:id/seat-layout', async (req, res) => {
   try {
     const { id } = req.params;
-    const { userID: operatorID, seatLayout } = req.body;
+    const { userID: operatorID, seatLayout, lockedSeatKeys: lockedSeatKeysBody } = req.body;
     if (!operatorID) return res.status(400).json({ error: '缺少 userID' });
     const act = await Activity.findById(id);
     if (!act) return res.status(404).json({ error: '活动不存在' });
@@ -1559,8 +1560,25 @@ app.put('/api/activities/:id/seat-layout', async (req, res) => {
     const total = buildSeatCatalog(normalized).length;
     if (total > 0) act.capacity = total;
     const newKeySet = new Set(buildSeatCatalog(normalized).map(s => s.seatKey));
-    act.lockedSeatKeys = (act.lockedSeatKeys || []).filter((k) => newKeySet.has(k));
+    const locksProvided = Array.isArray(lockedSeatKeysBody);
+    if (locksProvided) {
+      const nk = [...new Set(lockedSeatKeysBody.map(k => String(k || '').trim()))].filter((k) => newKeySet.has(k));
+      for (const k of nk) {
+        const has = await ActivitySeatReservation.findOne({
+          activityID: act._id,
+          seatKey: k,
+          status: { $in: ['pending', 'approved'] }
+        });
+        if (has) {
+          return res.status(400).json({ error: '部分内部预留座位已有观众选座记录，请先处理后再保存座位图' });
+        }
+      }
+      act.lockedSeatKeys = nk;
+    } else {
+      act.lockedSeatKeys = (act.lockedSeatKeys || []).filter((k) => newKeySet.has(k));
+    }
     await act.save();
+    io.emit('activity_seat_updated', { activityID: id });
     const actObj = act.toObject();
     actObj.id = act._id.toString();
     res.json({ success: true, activity: actObj, totalSeatCount: total });
@@ -1744,6 +1762,24 @@ app.post('/api/activities/:id/seat-reserve', upload.single('paymentProof'), asyn
       status: { $in: ['pending', 'approved'] }
     });
     if (userHas) return res.status(400).json({ error: '您已有一个座位预定或已定票，请勿重复选座' });
+    const reserver = await User.findOne({ userID });
+    if (!reserver) return res.status(401).json({ error: '用户不存在' });
+    const othersSeat = await ActivitySeatReservation.find({
+      activityID: activity._id,
+      status: { $in: ['pending', 'approved'] },
+      userID: { $ne: userID }
+    }).select('userID').lean();
+    const otherUserIds = [...new Set(othersSeat.map((o) => o.userID))];
+    if (otherUserIds.length) {
+      const otherUsers = await User.find({ userID: { $in: otherUserIds } }).select('name').lean();
+      for (const ou of otherUsers) {
+        if (seatBookingNamesConflict(reserver.name, ou.name)) {
+          return res.status(400).json({
+            error: '检测到与已有订座者姓名高度相似（同一活动每人仅得一票）。若确为本人请使用原账号；如有疑问请联系组织者。'
+          });
+        }
+      }
+    }
     const reservedN = await ActivitySeatReservation.countDocuments({
       activityID: activity._id,
       status: { $in: ['pending', 'approved'] }
