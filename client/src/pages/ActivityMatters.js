@@ -454,12 +454,12 @@ function ActivityMatters({ user }) {
   };
 
   return (
-    <div className="bg-white p-6 rounded shadow">
+    <div className="bg-white p-4 sm:p-6 rounded shadow w-full min-w-0 max-w-full box-border">
       {view === 'menu' && (
         <>
           <div className="flex flex-col gap-4 mb-8">
-            <button onClick={() => setView('organize')} className="bg-orange-500 text-white p-4 rounded text-xl">{t('activity.organizeBtn')}</button>
-            <button onClick={() => setView('register')} className="bg-blue-500 text-white p-4 rounded text-xl">{t('activity.registerBtn')}</button>
+            <button onClick={() => setView('organize')} className="bg-orange-500 text-white p-3 sm:p-4 rounded text-base sm:text-lg xl:text-xl w-full max-md:landscape:py-2.5">{t('activity.organizeBtn')}</button>
+            <button onClick={() => setView('register')} className="bg-blue-500 text-white p-3 sm:p-4 rounded text-base sm:text-lg xl:text-xl w-full max-md:landscape:py-2.5">{t('activity.registerBtn')}</button>
           </div>
           
           {/* 显示所有活动列表 */}
@@ -870,9 +870,9 @@ function ActivityMatters({ user }) {
       )}
 
       {view === 'performanceBook' && selectedActivity && (
-        <div className="space-y-4">
-          <div className="flex justify-between items-center flex-wrap gap-2">
-            <h2 className="text-xl font-bold">
+        <div className="space-y-4 w-full min-w-0">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start flex-wrap">
+            <h2 className="text-lg sm:text-xl font-bold break-words min-w-0 pr-2">
               {perfBookMode === 'lock' ? t('activity.performanceLockTitle') : t('activity.performanceBookTitle')}
               {selectedActivity.name}
             </h2>
@@ -924,16 +924,16 @@ function ActivityMatters({ user }) {
           </p>
           {perfBookLoading && <p className="text-gray-500">{t('activity.loadingSeats')}</p>}
           {seatMapData && !perfBookLoading && (
-            <div className="space-y-6 border rounded-xl p-4 bg-gray-50">
+            <div className="space-y-6 border rounded-xl p-3 sm:p-4 bg-gray-50 w-full min-w-0 overflow-hidden">
               {seatMapData.zones.map(zone => (
-                <div key={zone.id}>
-                  <h4 className="font-bold text-gray-800 mb-2">{zone.name} · ¥{zone.price}</h4>
+                <div key={zone.id} className="min-w-0">
+                  <h4 className="font-bold text-gray-800 mb-2 break-words">{zone.name} · ¥{zone.price}</h4>
                   {seatMapData.rows.filter(r => r.zoneId === zone.id).map(row => (
-                    <div key={`${zone.id}_${row.rowLabel}`} className="flex flex-wrap items-center gap-1 mb-2">
+                    <div key={`${zone.id}_${row.rowLabel}`} className="flex flex-nowrap items-center gap-1 mb-2 max-w-full overflow-x-auto pb-0.5 scroll-smooth touch-pan-x">
                       <span className="text-xs text-gray-500 w-14 shrink-0">
                         {isEn ? `${t('activity.rowSuffix')}${row.rowLabel}` : `${row.rowLabel}${t('activity.rowSuffix')}`}
                       </span>
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-nowrap gap-1 shrink-0">
                         {Array.from({ length: row.seatCount }, (_, i) => {
                           const num = i + 1;
                           const seatKey = `${zone.id}||${row.rowLabel}||${String(num)}`;
@@ -1032,8 +1032,8 @@ function ActivityMatters({ user }) {
             </div>
           )}
           {perfConfirmSeat && perfBookMode === 'book' && (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl space-y-4">
+            <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 p-4 overscroll-contain max-md:landscape:items-end max-md:landscape:p-3">
+              <div className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full max-h-[min(90dvh,90svh)] max-md:landscape:max-h-[80dvh] overflow-y-auto shadow-xl space-y-4">
                 <h3 className="font-bold text-lg">{t('activity.confirmSeatTitle')}</h3>
                 <p className="text-sm">
                   {t('activity.seatLine')
@@ -1063,8 +1063,8 @@ function ActivityMatters({ user }) {
             </div>
           )}
           {seatHolderModal && (
-            <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60] p-4">
-              <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-xl space-y-3">
+            <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-[60] p-4 overscroll-contain max-md:landscape:items-end max-md:landscape:p-3">
+              <div className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full max-h-[min(90dvh,90svh)] max-md:landscape:max-h-[80dvh] overflow-y-auto shadow-xl space-y-3">
                 <h3 className="font-bold text-lg">{t('activity.holderTitle')}</h3>
                 <p className="text-sm text-gray-700">
                   {t('activity.seatLine')
@@ -1157,10 +1157,10 @@ function ActivityMatters({ user }) {
       )}
 
       {view === 'detail' && selectedActivity && (
-        <div className="grid gap-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold">{t('activity.detailTitle').replace('{name}', selectedActivity.name)}</h2>
-            <div className="flex items-center gap-2">
+        <div className="grid gap-4 min-w-0">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start">
+            <h2 className="text-lg sm:text-xl font-bold break-words min-w-0 pr-2">{t('activity.detailTitle').replace('{name}', selectedActivity.name)}</h2>
+            <div className="flex items-center gap-2 flex-shrink-0">
               {(selectedActivity.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && !editingActivity && (
                 <button
                   onClick={() => {
@@ -1308,7 +1308,7 @@ function ActivityMatters({ user }) {
 
               {!editingActivity && (
               <>
-              <div className="border-t pt-4 flex gap-2">
+              <div className="border-t pt-4 flex flex-wrap gap-2">
                 {selectedActivity.organizerID !== user.userID && (
                   <button 
                     onClick={() => {
@@ -1379,8 +1379,8 @@ function ActivityMatters({ user }) {
       )}
 
       {showSeatEditor && selectedActivity && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-          <div className={`bg-white rounded-2xl p-6 shadow-xl space-y-4 my-8 ${seatEditorStep === 2 ? 'max-w-4xl w-full' : 'max-w-lg w-full'}`}>
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-3 sm:p-4 overflow-y-auto overscroll-contain max-md:landscape:items-end">
+          <div className={`bg-white rounded-2xl p-4 sm:p-6 shadow-xl space-y-4 my-4 sm:my-8 max-h-[min(100dvh-1rem,100svh-1rem)] max-md:landscape:max-h-[85dvh] max-md:landscape:my-2 overflow-y-auto w-full ${seatEditorStep === 2 ? 'max-w-4xl' : 'max-w-lg'}`}>
             <h3 className="font-bold text-lg">
               {t('activity.seatEditorTitle').replace('{name}', selectedActivity.name)}
               <span className="text-sm font-normal text-gray-500 ml-2">
@@ -1481,16 +1481,16 @@ function ActivityMatters({ user }) {
                   <div className="text-xs text-gray-500">
                     {t('activity.lockedCount').replace('{n}', String(seatPreviewLocks.length))}
                   </div>
-                  <div className="space-y-4 border rounded-xl p-4 bg-gray-50 max-h-[50vh] overflow-y-auto">
+                  <div className="space-y-4 border rounded-xl p-3 sm:p-4 bg-gray-50 max-h-[50vh] overflow-y-auto min-w-0">
                     {zones.map((zone) => (
-                      <div key={zone.id}>
-                        <h4 className="font-bold text-gray-800 mb-2">{zone.name} · ¥{Number(zone.price) || 0}</h4>
+                      <div key={zone.id} className="min-w-0">
+                        <h4 className="font-bold text-gray-800 mb-2 break-words">{zone.name} · ¥{Number(zone.price) || 0}</h4>
                         {rows.filter((r) => r.zoneId === zone.id).map((row) => (
-                          <div key={`${zone.id}_${row.rowLabel}`} className="flex flex-wrap items-center gap-1 mb-2">
+                          <div key={`${zone.id}_${row.rowLabel}`} className="flex flex-nowrap items-center gap-1 mb-2 max-w-full overflow-x-auto pb-0.5 scroll-smooth touch-pan-x">
                             <span className="text-xs text-gray-500 w-14 shrink-0">
                               {isEn ? `${t('activity.rowSuffix')}${row.rowLabel}` : `${row.rowLabel}${t('activity.rowSuffix')}`}
                             </span>
-                            <div className="flex flex-wrap gap-1">
+                            <div className="flex flex-nowrap gap-1 shrink-0">
                               {Array.from({ length: row.seatCount }, (_, i) => {
                                 const num = i + 1;
                                 const seatKey = `${zone.id}||${row.rowLabel}||${String(num)}`;
@@ -1527,9 +1527,9 @@ function ActivityMatters({ user }) {
       )}
 
       {view === 'participants' && participants && (
-        <div className="grid gap-4">
-          <div className="flex justify-between items-center">
-            <h2 className="text-xl font-bold">{t('activity.participantsPageTitle').replace('{name}', participants.activityName)}</h2>
+        <div className="grid gap-4 min-w-0">
+          <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start">
+            <h2 className="text-lg sm:text-xl font-bold break-words min-w-0 pr-2">{t('activity.participantsPageTitle').replace('{name}', participants.activityName)}</h2>
             <button 
               onClick={() => setView('menu')} 
               className="text-gray-500 underline text-sm"
@@ -1543,8 +1543,8 @@ function ActivityMatters({ user }) {
               <p>{t('activity.noParticipants')}</p>
             </div>
           ) : (
-            <div className="border rounded-lg overflow-hidden">
-              <table className="w-full">
+            <div className="border rounded-lg overflow-x-auto max-w-full -mx-0.5 px-0.5">
+              <table className="w-full min-w-[720px] text-sm">
                 <thead className="bg-gray-100">
                   <tr>
                     <th className="px-4 py-3 text-left text-sm font-bold text-gray-700">{t('activity.serialNo')}</th>

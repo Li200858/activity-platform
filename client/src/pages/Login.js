@@ -112,8 +112,8 @@ function Login({ onLogin, onRegister }) {
 
   if (showRegister) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-        <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
+      <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-gray-50 p-4 max-md:landscape:items-start max-md:landscape:py-6">
+        <div className="bg-white p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-md max-h-[calc(100dvh-2rem)] max-md:landscape:max-h-none overflow-y-auto">
           <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">{t('login.createAccount')}</h2>
           {error && <div className="mb-4 p-3 bg-red-100 text-red-600 rounded-lg text-sm">{error}</div>}
           <form onSubmit={handleRegisterSubmit} className="space-y-4">
@@ -142,9 +142,9 @@ function Login({ onLogin, onRegister }) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      <div className="bg-white p-8 rounded-xl shadow-lg w-full max-w-md">
-        <div className="flex mb-8 bg-gray-100 p-1 rounded-lg">
+    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center bg-gray-50 p-4 max-md:landscape:items-start max-md:landscape:py-6">
+      <div className="bg-white p-6 sm:p-8 rounded-xl shadow-lg w-full max-w-md max-h-[calc(100dvh-2rem)] max-md:landscape:max-h-none overflow-y-auto">
+        <div className="flex mb-6 sm:mb-8 bg-gray-100 p-1 rounded-lg max-md:landscape:mb-4">
           <button
             onClick={() => { setLoginMode('pin'); resetForm(); setPin(''); setUserID(''); setShowRecovery(false); }}
             className={`flex-1 py-2 rounded-md transition-all ${loginMode === 'pin' ? 'bg-white shadow-sm text-blue-600 font-bold' : 'text-gray-500'}`}

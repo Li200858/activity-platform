@@ -271,7 +271,7 @@ function AuditStatus({ user, onAnnouncementsChange }) {
   }
 
   return (
-    <div className="space-y-8 pb-20">
+    <div className="space-y-6 sm:space-y-8 pb-20 w-full min-w-0 max-md:landscape:space-y-4">
       {/* 管理员管理面板 */}
       {(user.role === 'admin' || user.role === 'super_admin') && (
         <div className="bg-white p-6 rounded-2xl shadow-sm border-2 border-red-50">
@@ -973,14 +973,14 @@ function AuditStatus({ user, onAnnouncementsChange }) {
 
       {/* 详情模态框 (Modal) */}
       {selectedDetail && (
-        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="text-3xl font-black text-gray-800">{t('audit.applicationDetail')}</h3>
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md flex items-end sm:items-center justify-center z-50 p-3 sm:p-4 animate-in fade-in duration-300 overscroll-contain max-md:landscape:items-end">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[min(92dvh,92svh)] max-md:landscape:max-h-[88dvh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-4 sm:p-8 border-b border-gray-100 bg-gray-50/50 shrink-0">
+              <h3 className="text-xl sm:text-3xl font-black text-gray-800 break-words">{t('audit.applicationDetail')}</h3>
               <p className="text-gray-400 text-sm mt-2">{t('audit.reviewDetailHint')}</p>
             </div>
             
-            <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
+            <div className="p-4 sm:p-8 space-y-6 min-h-0 flex-1 overflow-y-auto custom-scrollbar">
               {Object.entries(selectedDetail).map(([key, value]) => {
                 // 排除不需要显示的字段
                 if (['id', 'founderID', 'organizerID', 'status', 'type', 'createdAt', 'updatedAt', '_id', '__v', 'User', 'seatKey', 'zoneId'].includes(key)) return null;
@@ -1073,7 +1073,7 @@ function AuditStatus({ user, onAnnouncementsChange }) {
               })}
             </div>
 
-            <div className="p-8 bg-gray-50 flex gap-4 flex-wrap">
+            <div className="p-4 sm:p-8 bg-gray-50 flex gap-2 sm:gap-4 flex-wrap shrink-0">
               {selectedDetail.type !== 'performanceSeat' && (
               <button 
                 onClick={() => handleApprove(selectedDetail.type, selectedDetail.id, 'approved')}
@@ -1103,8 +1103,8 @@ function AuditStatus({ user, onAnnouncementsChange }) {
 
       {/* 公告编辑弹窗 */}
       {editingAnnouncement && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setEditingAnnouncement(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4 max-md:landscape:items-end overscroll-contain" onClick={() => setEditingAnnouncement(null)}>
+          <div className="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-md max-h-[min(90dvh,90svh)] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <h3 className="font-bold text-gray-800 mb-4">{isEn ? 'Edit announcement' : '编辑公告'}</h3>
             <input
               type="text"

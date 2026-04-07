@@ -530,11 +530,11 @@ function ClubMatters({ user }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 w-full min-w-0 max-w-full">
       {/* 周三社团最终确认弹窗 */}
       {showFinalConfirmModal && (
-        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4" onClick={() => setShowFinalConfirmModal(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl p-6 max-w-md w-full" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md flex items-end sm:items-center justify-center z-50 p-4 max-md:landscape:items-end overscroll-contain" onClick={() => setShowFinalConfirmModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <p className="text-gray-800 font-medium mb-4">{t('club.finalConfirmMessage')}</p>
             <div className="flex gap-3">
               <button onClick={() => setShowFinalConfirmModal(false)} className="flex-1 py-2.5 bg-gray-200 text-gray-700 rounded-xl font-bold hover:bg-gray-300">{t('common.cancel')}</button>
@@ -544,7 +544,7 @@ function ClubMatters({ user }) {
         </div>
       )}
       {/* 当前社团状态卡片：周三社团（一个）+ 日常社团（多个），可折叠 */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 w-full min-w-0">
         <h2 className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">{t('club.menu')}</h2>
         <div className="space-y-2">
           {/* 周三社团 - 可折叠 */}
@@ -650,7 +650,7 @@ function ClubMatters({ user }) {
         </div>
       </div>
 
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+      <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 w-full min-w-0">
         {view === 'menu' && (
           <>
             {/* 我管理的社团（社长或核心成员） */}
@@ -1005,8 +1005,8 @@ function ClubMatters({ user }) {
             </div>
             {/* 轮换时选择要替换的社团（多个周三社团时） */}
             {rotateTargetClubId && myWednesdayClubs.length > 1 && (
-              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={() => setRotateTargetClubId(null)}>
-                <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
+              <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/50 p-4 max-md:landscape:items-end overscroll-contain" onClick={() => setRotateTargetClubId(null)}>
+                <div className="bg-white rounded-2xl p-4 sm:p-6 max-w-md w-full max-h-[90dvh] overflow-y-auto shadow-xl" onClick={e => e.stopPropagation()}>
                   <h3 className="font-black text-gray-800 mb-4">{t('club.replaceWhich')}</h3>
                   <p className="text-sm text-gray-500 mb-4">{t('club.replaceHint')}</p>
                   <ul className="space-y-2">
@@ -1339,10 +1339,10 @@ function ClubMatters({ user }) {
 
       {/* 社团详情模态框 */}
       {selectedClubDetail && (
-        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md flex items-center justify-center z-50 p-4 animate-in fade-in duration-300">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-8 border-b border-gray-100 bg-gray-50/50">
-              <h3 className="text-3xl font-black text-gray-800">{t('club.detail')}</h3>
+        <div className="fixed inset-0 bg-gray-900/60 backdrop-blur-md flex items-end sm:items-center justify-center z-50 p-3 sm:p-4 animate-in fade-in duration-300 max-md:landscape:items-end overscroll-contain">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg max-h-[min(92dvh,92svh)] max-md:landscape:max-h-[88dvh] overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+            <div className="p-4 sm:p-8 border-b border-gray-100 bg-gray-50/50 shrink-0">
+              <h3 className="text-xl sm:text-3xl font-black text-gray-800 break-words">{t('club.detail')}</h3>
               <p className="text-gray-400 text-sm mt-2"><TranslatableContent>{selectedClubDetail.name}</TranslatableContent></p>
               <p className="text-gray-600 text-sm mt-1">
                 {selectedClubDetail.actualLeaderName ? (
@@ -1383,7 +1383,7 @@ function ClubMatters({ user }) {
               )}
             </div>
             
-            <div className="p-8 space-y-6 max-h-[50vh] overflow-y-auto custom-scrollbar">
+            <div className="p-4 sm:p-8 space-y-6 min-h-0 flex-1 overflow-y-auto custom-scrollbar max-md:landscape:max-h-[50vh]">
               {/* 社团分类与类型区块（可编辑） */}
               {canManageClub(selectedClubDetail) && (
                 <div className="border-l-4 border-indigo-100 pl-4 py-2">
@@ -1758,7 +1758,7 @@ function ClubMatters({ user }) {
               })}
             </div>
 
-            <div className="p-8 bg-gray-50 flex justify-between items-center flex-wrap gap-2">
+            <div className="p-4 sm:p-8 bg-gray-50 flex justify-between items-center flex-wrap gap-2 shrink-0">
               <div className="flex gap-2 flex-wrap">
                 {/* 报名按钮 - 从社团报名页打开详情时显示 */}
                 {view === 'registration' && (() => {
@@ -1894,7 +1894,7 @@ function ClubMatters({ user }) {
         const membersClub = (managedClubs || []).find(c => c.id === membersClubId) || (myWednesdayClubs || []).find(m => m.Club?.id === membersClubId)?.Club || (myDailyClubs || []).find(m => m.Club?.id === membersClubId)?.Club || (clubs || []).find(c => c.id === membersClubId) || (selectedClubDetail?.id === membersClubId ? selectedClubDetail : null);
         const canAddMember = membersClub && user.role === 'super_admin';
         return (
-        <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 w-full min-w-0">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-xl font-black text-gray-800">{t('club.participants')} - {members.clubName}</h2>
             <button 

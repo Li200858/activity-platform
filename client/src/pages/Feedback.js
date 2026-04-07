@@ -38,9 +38,9 @@ function Feedback({ user }) {
   };
 
   return (
-    <div className="space-y-10">
-      <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-500">
-        <h2 className="text-3xl font-black text-gray-800 mb-6 flex items-center gap-3">
+    <div className="space-y-6 sm:space-y-10 w-full min-w-0">
+      <div className="bg-white p-4 sm:p-8 rounded-3xl shadow-xl border border-gray-100 animate-in fade-in zoom-in-95 duration-500 w-full min-w-0 max-md:landscape:p-5">
+        <h2 className="text-2xl sm:text-3xl font-black text-gray-800 mb-4 sm:mb-6 flex items-center gap-3 break-words">
           {t('feedback.title')}
         </h2>
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -49,7 +49,7 @@ function Feedback({ user }) {
               placeholder={t('feedback.placeholder')} 
               value={content}
               onChange={e => setContent(e.target.value)}
-              className="w-full bg-gray-50 border-none rounded-3xl px-6 py-5 min-h-[180px] outline-none focus:ring-4 focus:ring-blue-100 transition-all text-gray-700 leading-relaxed"
+              className="w-full bg-gray-50 border-none rounded-3xl px-4 sm:px-6 py-4 sm:py-5 min-h-[140px] sm:min-h-[180px] max-md:landscape:min-h-[120px] outline-none focus:ring-4 focus:ring-blue-100 transition-all text-gray-700 leading-relaxed"
               required
             />
             <div className="absolute bottom-4 right-6 text-[10px] font-black text-gray-300 uppercase tracking-widest pointer-events-none">

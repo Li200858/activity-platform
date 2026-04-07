@@ -156,11 +156,11 @@ function App() {
   const isAdmin = user.role === 'admin' || user.role === 'super_admin';
 
   return (
-    <div className="min-h-screen bg-gray-100 font-sans">
-      <header className="bg-white shadow-sm sticky top-0 z-20">
-        <div className="max-w-6xl mx-auto p-4 flex flex-col gap-4">
-          <div className="flex justify-between items-center">
-            <div className="flex gap-1 sm:gap-2 overflow-x-auto no-scrollbar py-1">
+    <div className="min-h-screen min-h-[100dvh] bg-gray-100 font-sans overflow-x-hidden">
+      <header className="bg-white shadow-sm sticky top-0 z-20 app-header-sticky compact-landscape-header">
+        <div className="max-w-6xl mx-auto p-3 sm:p-4 landscape-tight-y max-md:landscape:p-2 flex flex-col gap-3 sm:gap-4 max-md:landscape:gap-2 w-full min-w-0 box-border">
+          <div className="flex flex-col gap-3 min-w-0 xl:flex-row xl:justify-between xl:items-center">
+            <div className="flex gap-1 sm:gap-2 overflow-x-auto no-scrollbar py-1 min-w-0 w-full xl:w-auto">
               <button onClick={() => handleTabChange('社团事宜')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all ${activeTab === '社团事宜' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>{t('app.tabs.club')}</button>
               <button onClick={() => handleTabChange('活动事宜')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all ${activeTab === '活动事宜' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>{t('app.tabs.activity')}</button>
               <button onClick={() => handleTabChange('意见反馈')} className={`whitespace-nowrap px-4 py-2 rounded-full transition-all ${activeTab === '意见反馈' ? 'bg-blue-600 text-white shadow-lg shadow-blue-200 font-bold' : 'text-gray-500 hover:bg-gray-100'}`}>{t('app.tabs.feedback')}</button>
@@ -173,25 +173,25 @@ function App() {
               )}
             </div>
             
-            <div className="flex items-center gap-3 sm:gap-6">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 xl:gap-6 justify-start xl:justify-end w-full xl:w-auto min-w-0">
               <button
                 type="button"
                 onClick={() => setLang(lang === 'zh' ? 'en' : 'zh')}
-                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors"
+                className="text-xs font-bold px-3 py-1.5 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 transition-colors shrink-0"
               >
                 {t('app.langSwitch')}
               </button>
               <button 
                 onClick={() => handleTabChange('审核状态')} 
-                className={`text-sm font-bold transition-colors relative flex items-center gap-1 ${activeTab === '审核状态' ? 'text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}
+                className={`text-sm font-bold transition-colors relative flex items-center gap-1 shrink-0 ${activeTab === '审核状态' ? 'text-blue-600' : 'text-gray-400 hover:text-blue-600'}`}
               >
                 <span>{t('app.tabs.audit')}</span>
                 {hasAuditUnread && activeTab !== '审核状态' && activeTab !== '反馈收集' && (
                   <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-red-500 rounded-full border-2 border-white animate-pulse"></span>
                 )}
               </button>
-              <div className="h-8 w-px bg-gray-200"></div>
-              <div className="flex flex-col items-end gap-1">
+              <div className="hidden xl:block h-8 w-px bg-gray-200 shrink-0" aria-hidden="true" />
+              <div className="flex flex-col items-stretch sm:items-end gap-1 min-w-0 flex-1 xl:flex-initial">
                 <div className="flex flex-col items-end">
                   <p className="text-xs font-black text-gray-800 leading-tight">
                     {user.name}
@@ -225,13 +225,13 @@ function App() {
                     {(user.hasPin === true) ? (isEn ? 'Change PIN' : '修改PIN') : (isEn ? 'Set PIN' : '设置PIN')}
                   </button>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 w-full sm:w-auto min-w-0 justify-end">
                   <input
                     type="text"
                     value={englishDraft}
                     placeholder={t('app.englishName')}
                     onChange={e => setEnglishDraft(e.target.value)}
-                    className="w-32 sm:w-40 bg-white border border-gray-200 rounded-full px-3 py-1 text-[10px] text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
+                    className="min-w-0 flex-1 sm:flex-initial w-full sm:w-40 max-w-full bg-white border border-gray-200 rounded-full px-3 py-1 text-[10px] text-gray-700 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     type="button"
@@ -242,29 +242,29 @@ function App() {
                   </button>
                 </div>
               </div>
-              <button onClick={logout} className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all">
+              <button type="button" onClick={logout} className="p-2 bg-red-50 text-red-500 rounded-full hover:bg-red-500 hover:text-white transition-all shrink-0">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
               </button>
             </div>
           </div>
 
-          <form onSubmit={handleSearch} className="relative group">
+          <form onSubmit={handleSearch} className="relative group w-full min-w-0 max-md:landscape:pt-0">
             <input 
               type="text" 
               placeholder={t('app.search.placeholder')} 
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full bg-gray-100 border-none rounded-2xl px-12 py-3 outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
+              className="w-full min-w-0 box-border bg-gray-100 border-none rounded-2xl pl-11 pr-[5.25rem] sm:pl-12 sm:pr-28 py-2.5 sm:py-3 max-md:landscape:py-2 outline-none focus:ring-2 focus:ring-blue-500 transition-all text-sm"
             />
-            <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400">
+            <div className="absolute left-3 sm:left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
             </div>
-            <button type="submit" className="absolute right-2 top-1/2 -translate-y-1/2 bg-blue-600 text-white px-5 py-1.5 rounded-xl text-xs font-black shadow-lg shadow-blue-100">{t('app.search.button')}</button>
+            <button type="submit" className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 bg-blue-600 text-white px-3 py-1.5 sm:px-5 rounded-xl text-[10px] sm:text-xs font-black shadow-lg shadow-blue-100 shrink-0 max-w-[calc(100%-3rem)] truncate">{t('app.search.button')}</button>
           </form>
         </div>
       </header>
 
-      <main className="p-4 sm:p-8 max-w-5xl mx-auto">
+      <main className="p-3 sm:p-4 md:p-8 max-md:landscape:py-3 max-md:landscape:px-3 max-w-5xl mx-auto w-full min-w-0 box-border">
         {/* 公告栏：所有用户可见，点击查看完整内容 */}
         {announcementsLoading ? (
           <div className="mb-6 p-4 rounded-xl bg-amber-50/50 border border-amber-100 animate-pulse">
@@ -287,10 +287,10 @@ function App() {
         )}
 
         {activeTab === '搜索结果' && searchResults && (
-          <div className="space-y-8 animate-in slide-in-from-bottom-4 duration-500">
-            <div className="flex justify-between items-center">
-              <h2 className="text-3xl font-black text-gray-800">{t('app.search.resultTitle')}: <span className="text-blue-600">"{searchQuery}"</span></h2>
-              <button onClick={() => { setSearchResults(null); setActiveTab('社团事宜'); }} className="text-sm font-bold text-gray-400 hover:text-blue-600 transition-colors">{t('app.search.backHome')}</button>
+          <div className="space-y-6 sm:space-y-8 animate-in slide-in-from-bottom-4 duration-500 min-w-0">
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start min-w-0">
+              <h2 className="text-xl sm:text-2xl xl:text-3xl font-black text-gray-800 break-words min-w-0">{t('app.search.resultTitle')}: <span className="text-blue-600 break-all">"{searchQuery}"</span></h2>
+              <button onClick={() => { setSearchResults(null); setActiveTab('社团事宜'); }} className="text-sm font-bold text-gray-400 hover:text-blue-600 transition-colors shrink-0 text-left sm:text-right">{t('app.search.backHome')}</button>
             </div>
             
             <section>
@@ -298,7 +298,7 @@ function App() {
               <div className="grid gap-4 sm:grid-cols-2">
                 {searchResults.users.length === 0 && <p className="text-gray-400 italic text-sm">{t('app.noUsers')}</p>}
                 {searchResults.users.map((u, idx) => (
-                  <div key={idx} className="bg-white p-5 rounded-2xl shadow-sm flex justify-between items-center border border-gray-100 hover:shadow-xl hover:scale-[1.02] transition-all">
+                  <div key={idx} className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center border border-gray-100 hover:shadow-xl xl:hover:scale-[1.02] transition-all min-w-0">
                     <div>
                       <p className="font-black text-gray-800 text-lg">
                         {u.name}
@@ -380,8 +380,8 @@ function App() {
 
       {/* 公告详情弹窗 */}
       {selectedAnnouncement && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedAnnouncement(null)}>
-          <div className="bg-white rounded-2xl p-6 w-full max-w-lg max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4 max-md:landscape:items-end overscroll-contain" onClick={() => setSelectedAnnouncement(null)}>
+          <div className="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-lg max-h-[min(85dvh,85svh)] max-md:landscape:max-h-[75dvh] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <h3 className="font-bold text-gray-800 text-lg mb-3">{selectedAnnouncement.title}</h3>
             <p className="text-sm text-gray-600 whitespace-pre-wrap">{selectedAnnouncement.content}</p>
             <button onClick={() => setSelectedAnnouncement(null)} className="mt-4 w-full py-2 rounded-lg border border-gray-300 font-bold text-gray-600">
@@ -393,8 +393,8 @@ function App() {
 
       {/* PIN 设置弹窗 */}
       {showPinModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm">
+        <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-4 max-md:landscape:items-end overscroll-contain">
+          <div className="bg-white rounded-2xl p-4 sm:p-6 w-full max-w-sm max-h-[min(90dvh,90svh)] max-md:landscape:max-h-[80dvh] overflow-y-auto">
             <h3 className="font-bold text-gray-800 mb-3">{user?.hasPin ? (isEn ? 'Change PIN' : '修改 PIN') : (isEn ? 'Set PIN' : '设置 PIN')}</h3>
             <p className="text-xs text-gray-500 mb-1">{isEn ? '4-6 digits, leave empty to remove' : '4-6 位数字，留空则移除'}</p>
             <p className="text-xs text-amber-600 mb-3">{isEn ? 'If set, next login only needs PIN (no ID required); if left empty, ID required.' : '如设置 PIN 则下次登录只需填写 PIN，不需要 ID；留空则需用 ID 登录。'}</p>
