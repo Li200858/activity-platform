@@ -100,15 +100,23 @@ function AuditStatus({ user, onAnnouncementsChange }) {
   };
 
   const handleApproveAll = async (type) => {
-    const list = type === 'clubJoin' ? data.myClubJoinApprovals : data.myActivityRegApprovals;
+    const list =
+      type === 'clubJoin'
+        ? data.myClubJoinApprovals
+        : type === 'performanceSeat'
+          ? data.myPerformanceSeatApprovals
+          : data.myActivityRegApprovals;
     const ids = (list || []).map(x => x.id).filter(Boolean);
     if (ids.length === 0) {
       alert(t('audit.noApplications'));
       return;
     }
-    const confirmMsg = type === 'clubJoin'
-      ? (t('audit.approveAllConfirm') || '确定一键通过全部 {n} 条申请？人数已满的社团将自动拒绝。').replace('{n}', ids.length)
-      : '确定一键通过全部 ' + ids.length + ' 条申请？';
+    const confirmMsg =
+      type === 'clubJoin'
+        ? (t('audit.approveAllConfirm') || '确定一键通过全部 {n} 条申请？人数已满的社团将自动拒绝。').replace('{n}', ids.length)
+        : type === 'performanceSeat'
+          ? t('audit.approveAllPerformanceConfirm').replace('{n}', String(ids.length))
+          : '确定一键通过全部 ' + ids.length + ' 条申请？';
     if (!window.confirm(confirmMsg)) return;
     try {
       const res = await api.post('/audit/approve-batch', { type, ids, status: 'approved', operatorID: user.userID });
@@ -116,9 +124,18 @@ function AuditStatus({ user, onAnnouncementsChange }) {
       setSelectedDetail(null);
       const approved = res.data?.count ?? 0;
       const rejectedFull = res.data?.rejectedFull ?? 0;
-      const msg = rejectedFull > 0
-        ? `已通过 ${approved} 条，因人数已满自动拒绝 ${rejectedFull} 条`
-        : `已通过 ${approved} 条申请`;
+      const skippedFullSeat = res.data?.skippedFullSeat ?? 0;
+      let msg;
+      if (type === 'performanceSeat' && skippedFullSeat > 0) {
+        msg = isEn
+          ? `Approved ${approved}; ${skippedFullSeat} could not be approved (no remaining seats).`
+          : `已通过 ${approved} 条；因已无余票 ${skippedFullSeat} 条未能通过（待审记录已清除）`;
+      } else {
+        msg =
+          rejectedFull > 0
+            ? `已通过 ${approved} 条，因人数已满自动拒绝 ${rejectedFull} 条`
+            : `已通过 ${approved} 条申请`;
+      }
       alert(msg);
     } catch (e) {
       const errorMsg = e.response?.data?.error || e.message || '操作失败，请稍后重试';
@@ -848,7 +865,18 @@ function AuditStatus({ user, onAnnouncementsChange }) {
           {/* 演出选座：待确认付款（仅展示给创建过活动的用户，避免占位） */}
           {((data.myActivityStatus && data.myActivityStatus.length > 0) || (data.myPerformanceSeatApprovals || []).length > 0) && (
           <section className="border border-amber-100 bg-amber-50/40 rounded-2xl p-6">
-            <h3 className="text-xs font-bold text-amber-800 uppercase tracking-widest mb-4">演出座位预定 · 待您确认已收款</h3>
+            <div className="flex justify-between items-center gap-3 mb-4">
+              <h3 className="text-xs font-bold text-amber-800 uppercase tracking-widest">演出座位预定 · 待您确认已收款</h3>
+              {(data.myPerformanceSeatApprovals || []).length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => handleApproveAll('performanceSeat')}
+                  className="bg-green-600 text-white text-xs px-3 py-1.5 rounded-lg font-bold hover:bg-green-700 flex-shrink-0"
+                >
+                  {t('audit.approveAll')}
+                </button>
+              )}
+            </div>
             <div className="space-y-3">
               {(!(data.myPerformanceSeatApprovals || []).length) && <p className="text-gray-400 text-sm">暂无待审选座</p>}
               {(data.myPerformanceSeatApprovals || []).map(r => (

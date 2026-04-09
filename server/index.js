@@ -2291,19 +2291,22 @@ app.post('/api/audit/approve', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 批量审核（仅支持 clubJoin、activityReg，供社团社长/活动组织者一键通过）
+// 批量审核（clubJoin、activityReg、performanceSeat，供社长/活动组织者一键通过）
 app.post('/api/audit/approve-batch', async (req, res) => {
   try {
     const { type, ids, status, operatorID } = req.body;
     if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
     if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids 必须为非空数组' });
-    if (type !== 'clubJoin' && type !== 'activityReg') return res.status(400).json({ error: '批量审核仅支持 clubJoin 或 activityReg' });
+    if (type !== 'clubJoin' && type !== 'activityReg' && type !== 'performanceSeat') {
+      return res.status(400).json({ error: '批量审核仅支持 clubJoin、activityReg 或 performanceSeat' });
+    }
 
     const op = await User.findOne({ userID: operatorID });
     if (!op) return res.status(401).json({ error: '用户不存在' });
 
     let successCount = 0;
     let rejectedCount = 0; // 因人数已满被拒绝的数量
+    let skippedFullSeat = 0; // 演出选座：已无余票，与单笔审核一致移除待审记录
     for (const id of ids) {
       try {
         if (type === 'clubJoin') {
@@ -2337,10 +2340,41 @@ app.post('/api/audit/approve-batch', async (req, res) => {
           await Notification.create({ userID: item.userID, type: 'status_update', relatedID: id.toString() });
           io.emit('notification_update', { userID: item.userID });
           successCount++;
+        } else if (type === 'performanceSeat') {
+          const item = await ActivitySeatReservation.findById(id);
+          if (!item || item.status !== 'pending') continue;
+          const activity = await Activity.findById(item.activityID);
+          if (!activity) continue;
+          const isAdmin = op.role === 'admin' || op.role === 'super_admin';
+          const isOrganizer = activity.organizerID === operatorID;
+          if (!isAdmin && !isOrganizer) continue;
+          if (status !== 'approved') continue;
+          const approvedCount = await ActivitySeatReservation.countDocuments({ activityID: item.activityID, status: 'approved' });
+          const catalog = buildSeatCatalog(activity?.seatLayout || {});
+          if (catalog.length > 0 && approvedCount >= catalog.length) {
+            await ActivitySeatReservation.deleteOne({ _id: item._id });
+            await Notification.create({ userID: item.userID, type: 'status_update', relatedID: id.toString() });
+            io.emit('notification_update', { userID: item.userID });
+            io.emit('activity_seat_updated', { activityID: item.activityID.toString() });
+            skippedFullSeat++;
+            continue;
+          }
+          item.status = 'approved';
+          item.paymentStatus = 'paid';
+          await item.save();
+          await Notification.create({ userID: item.userID, type: 'status_update', relatedID: id.toString() });
+          io.emit('notification_update', { userID: item.userID });
+          io.emit('activity_seat_updated', { activityID: item.activityID.toString() });
+          successCount++;
         }
       } catch (_) { /* 跳过单个失败 */ }
     }
-    res.json({ success: true, count: successCount, rejectedFull: type === 'clubJoin' ? rejectedCount : undefined });
+    res.json({
+      success: true,
+      count: successCount,
+      rejectedFull: type === 'clubJoin' ? rejectedCount : undefined,
+      skippedFullSeat: type === 'performanceSeat' ? skippedFullSeat : undefined
+    });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
