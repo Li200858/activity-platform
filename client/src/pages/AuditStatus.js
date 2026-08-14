@@ -27,6 +27,9 @@ function AuditStatus({ user, onAnnouncementsChange }) {
   const [editingAnnouncement, setEditingAnnouncement] = useState(null);
   const [announcementLoading, setAnnouncementLoading] = useState(false);
   const [announcementsFetching, setAnnouncementsFetching] = useState(false);
+  const [clubsByActivity, setClubsByActivity] = useState(null); // { currentSemesterLabel, clubs: [] }
+  const [clubsByActivityLoading, setClubsByActivityLoading] = useState(false);
+  const [showClubsByActivity, setShowClubsByActivity] = useState(false);
 
   const fetchAnnouncements = async () => {
     setAnnouncementsFetching(true);
@@ -35,6 +38,46 @@ function AuditStatus({ user, onAnnouncementsChange }) {
       setAnnouncements(res.data || []);
     } catch (e) { setAnnouncements([]); }
     finally { setAnnouncementsFetching(false); }
+  };
+
+  const formatClubActivityTime = (value) => {
+    if (!value) return isEn ? 'Unknown' : '未知';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return isEn ? 'Unknown' : '未知';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const fetchClubsByActivity = async () => {
+    if (!(user.role === 'admin' || user.role === 'super_admin')) return;
+    setClubsByActivityLoading(true);
+    try {
+      const res = await api.get(`/admin/clubs/by-activity?operatorID=${encodeURIComponent(user.userID)}`);
+      setClubsByActivity(res.data || null);
+    } catch (e) {
+      setClubsByActivity(null);
+      alert(e.response?.data?.error || (isEn ? 'Failed to load clubs' : '加载社团列表失败'));
+    } finally {
+      setClubsByActivityLoading(false);
+    }
+  };
+
+  const handleAdminDissolveClub = async (club) => {
+    if (!club?.canAdminDissolve) {
+      alert(isEn ? 'Only clubs not updated this semester can be dissolved by admin.' : '仅「上次更新不在本学期」的社团可由管理员解散。');
+      return;
+    }
+    const tip = isEn
+      ? `Dissolve "${club.name}"? All members will become free. This cannot be undone.`
+      : `确定解散社团「${club.name}」吗？全体成员将回到自由人，此操作不可撤销。`;
+    if (!window.confirm(tip)) return;
+    try {
+      await api.delete(`/clubs/${club.id}?userID=${encodeURIComponent(user.userID)}`);
+      alert(isEn ? 'Club dissolved' : '社团已解散');
+      fetchClubsByActivity();
+    } catch (e) {
+      alert(e.response?.data?.error || (isEn ? 'Dissolve failed' : '解散失败'));
+    }
   };
 
   useEffect(() => {
@@ -456,6 +499,87 @@ function AuditStatus({ user, onAnnouncementsChange }) {
                 {!announcementsFetching && announcements.length === 0 && <p className="text-gray-400 text-sm py-2">{isEn ? 'No announcements yet' : '暂无公告'}</p>}
               </div>
             </div>
+          </div>
+
+          {/* 管理员：按上次更新时间管理本学期不再开展的社团 */}
+          <div className="mt-8 pt-6 border-t border-gray-100">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-sm font-bold text-gray-700">
+                  {isEn ? 'Clubs by last update (oldest first)' : '社团更新时间管理（从早到晚）'}
+                </h3>
+                <p className="text-xs text-gray-500 mt-1">
+                  {isEn
+                    ? 'Admin may dissolve clubs whose last update is not in the current semester. Individual member leave does not count as club update.'
+                    : '仅「上次更新不在本学期」的社团可由管理员解散。个人退出不计入社团更新；修改信息或「学期社员重置」会刷新更新时间。'}
+                </p>
+                {clubsByActivity?.currentSemesterLabel && (
+                  <p className="text-xs text-emerald-700 mt-1 font-bold">
+                    {isEn ? 'Current semester' : '当前学期'}：{clubsByActivity.currentSemesterLabel}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!showClubsByActivity) {
+                    setShowClubsByActivity(true);
+                    fetchClubsByActivity();
+                  } else {
+                    fetchClubsByActivity();
+                  }
+                }}
+                disabled={clubsByActivityLoading}
+                className="px-4 py-2 bg-amber-600 text-white rounded-xl font-bold text-sm hover:bg-amber-700 disabled:opacity-50"
+              >
+                {clubsByActivityLoading
+                  ? (isEn ? 'Loading...' : '加载中...')
+                  : showClubsByActivity
+                    ? (isEn ? 'Refresh list' : '刷新列表')
+                    : (isEn ? 'Load club update list' : '加载社团更新列表')}
+              </button>
+            </div>
+            {showClubsByActivity && (
+              <div className="space-y-2 max-h-96 overflow-y-auto">
+                {(clubsByActivity?.clubs || []).length === 0 && !clubsByActivityLoading && (
+                  <p className="text-gray-400 text-sm py-2">{isEn ? 'No approved clubs' : '暂无已通过社团'}</p>
+                )}
+                {(clubsByActivity?.clubs || []).map(club => (
+                  <div
+                    key={club.id}
+                    className={`p-3 rounded-xl border text-sm flex flex-wrap items-center justify-between gap-3 ${
+                      club.canAdminDissolve ? 'bg-amber-50 border-amber-100' : 'bg-gray-50 border-gray-100'
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="font-bold text-gray-800 break-words">{club.name}</div>
+                      <div className="mt-1 text-xs text-gray-600 flex flex-wrap gap-x-3 gap-y-1">
+                        <span>{isEn ? 'Updated' : '上次更新'}：{formatClubActivityTime(club.lastActivityAt)}</span>
+                        <span>{isEn ? 'Term' : '所属学期'}：{club.activitySemesterLabel || (isEn ? 'Unknown' : '未知')}</span>
+                        <span>{isEn ? 'Members' : '人数'}：{club.memberCount}</span>
+                        {club.founderName && <span>{isEn ? 'Founder' : '创建者'}：{club.founderName}{club.founderClass ? ` · ${club.founderClass}` : ''}</span>}
+                        <span className={`font-bold ${club.canAdminDissolve ? 'text-amber-700' : 'text-emerald-700'}`}>
+                          {club.canAdminDissolve
+                            ? (isEn ? 'Not updated this semester — can dissolve' : '非本学期更新 · 可解散')
+                            : (isEn ? 'Updated this semester — protected' : '本学期已更新 · 不可由管理员解散')}
+                        </span>
+                      </div>
+                    </div>
+                    {club.canAdminDissolve ? (
+                      <button
+                        type="button"
+                        onClick={() => handleAdminDissolveClub(club)}
+                        className="px-3 py-1.5 bg-red-600 text-white rounded-lg text-xs font-bold hover:bg-red-700 shrink-0"
+                      >
+                        {isEn ? 'Dissolve' : '解散社团'}
+                      </button>
+                    ) : (
+                      <span className="text-[10px] text-gray-400 font-bold shrink-0">{isEn ? 'Protected' : '受保护'}</span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           {/* 管理员：查看所有用户社团选择 */}

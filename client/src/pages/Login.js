@@ -68,7 +68,11 @@ function Login({ onLogin, onRegister }) {
     }
     try {
       const pinVal = registerPin.trim();
-      await onRegister(name.trim(), userClass.trim(), (pinVal && /^\d{4,6}$/.test(pinVal)) ? pinVal : undefined);
+      if (pinVal && !/^\d{4,6}$/.test(pinVal)) {
+        setError(isEn ? 'PIN must be 4-6 digits, or leave blank' : 'PIN 须为 4-6 位数字，不需要可留空');
+        return;
+      }
+      await onRegister(name.trim(), userClass.trim(), pinVal || undefined);
       setShowRegister(false);
       setName('');
       setUserClass('');

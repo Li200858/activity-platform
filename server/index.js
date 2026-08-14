@@ -158,9 +158,46 @@ const isRotationAllowed = () => {
 
 // --- API 路由 ---
 
-// 服务器时间API（用于检查时间同步）
+// 当前学期：春季 3月1日-7月15日，秋季 9月1日-次年1月31日（按服务器真实时间推算）
+function getCurrentSemester(date = new Date()) {
+  const d = date instanceof Date ? date : new Date(date);
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1; // 1-12
+  if (m >= 9) return `${y}-fall`;      // 9月1日-12月31日 → 当年秋季
+  if (m === 1) return `${y - 1}-fall`; // 1月1日-1月31日 → 上年秋季
+  // 2月-8月 → 当年春季（含 3/1-7/15 春季 + 2月与 7/16-8/31 沿用春季计数）
+  return `${y}-spring`;
+}
+
+function getSemesterLabel(semester) {
+  if (!semester) return '本学期';
+  const [y, type] = String(semester).split('-');
+  return type === 'fall' ? `${y}年秋季` : `${y}年春季`;
+}
+
+/** 社团业务更新时间：优先 lastActivityAt，旧数据回退 updatedAt/createdAt */
+function getClubLastActivityAt(club) {
+  if (!club) return null;
+  const raw = club.lastActivityAt || club.updatedAt || club.createdAt || null;
+  return raw ? new Date(raw) : null;
+}
+
+/** 更新时间是否不属于当前学期（含上学期及更早） */
+function isClubActivityFromPastSemester(club, now = new Date()) {
+  const at = getClubLastActivityAt(club);
+  if (!at || Number.isNaN(at.getTime())) return true;
+  return getCurrentSemester(at) !== getCurrentSemester(now);
+}
+
+function touchClubActivity(club, when = new Date()) {
+  club.lastActivityAt = when;
+  return club;
+}
+
+// 服务器时间API（用于检查时间同步；学期等业务一律跟服务器时钟）
 app.get('/api/time', (req, res) => {
   const now = moment();
+  const semester = getCurrentSemester(now.toDate());
   res.json({
     serverTime: now.format('YYYY-MM-DD HH:mm:ss'),
     serverTimeISO: now.toISOString(),
@@ -168,7 +205,9 @@ app.get('/api/time', (req, res) => {
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     day: now.day(),
     hour: now.hour(),
-    minute: now.minute()
+    minute: now.minute(),
+    currentSemester: semester,
+    currentSemesterLabel: getSemesterLabel(semester)
   });
 });
 
@@ -718,7 +757,13 @@ app.get('/api/clubs/approved', async (req, res) => {
         blocks: Array.isArray(plain.blocks) ? plain.blocks : [],
         category: plain.category || 'wednesday',
         coreMemberIDs: Array.isArray(plain.coreMemberIDs) ? plain.coreMemberIDs : [],
-        coreMembers: plain.coreMembers || []
+        coreMembers: plain.coreMembers || [],
+        lastActivityAt: getClubLastActivityAt(plain),
+        activitySemester: (() => {
+          const at = getClubLastActivityAt(plain);
+          return at ? getCurrentSemester(at) : null;
+        })(),
+        isPastSemesterActivity: isClubActivityFromPastSemester(plain)
       };
     }));
     result.sort((a, b) => getClubSortKey(a.name).localeCompare(getClubSortKey(b.name)));
@@ -758,7 +803,9 @@ app.get('/api/clubs/managed/:userID', async (req, res) => {
           name: (userMap.get(uid) || {}).name || '未知',
           englishName: (userMap.get(uid) || {}).englishName || ''
         })),
-        coreMemberIDs: plain.coreMemberIDs || []
+        coreMemberIDs: plain.coreMemberIDs || [],
+        lastActivityAt: getClubLastActivityAt(plain),
+        isPastSemesterActivity: isClubActivityFromPastSemester(plain)
       };
     }));
     res.json(result);
@@ -775,7 +822,7 @@ app.get('/api/clubs/my/:userID', async (req, res) => {
     if (operatorID !== userID && op.role !== 'admin' && op.role !== 'super_admin') return res.status(403).json({ error: '只能查看自己的社团' });
     const members = await ClubMember.find({ userID, status: { $ne: 'rejected' } }).populate('clubID');
     const wednesdayList = members.filter(m => m.clubID && clubHasWednesday(m.clubID.category));
-    const daily = members.filter(m => m.clubID && m.clubID.category === 'daily');
+    const daily = members.filter(m => m.clubID && (m.clubID.category === 'daily' || m.clubID.category === 'both'));
     const format = (m) => {
       const result = m.toObject();
       result.Club = result.clubID;
@@ -801,13 +848,24 @@ app.post('/api/clubs/leave', async (req, res) => {
     if (!userID || !clubID) return res.status(400).json({ error: '缺少 userID 或 clubID' });
     if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己操作' });
     const club = await Club.findById(clubID);
-    if (club && clubHasWednesday(club.category)) {
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    if (club.founderID === userID) {
+      return res.status(400).json({ error: '社长不能直接退出，请先转交社长或解散社团' });
+    }
+    if (clubHasWednesday(club.category)) {
       const semester = getCurrentSemester();
       const confirmed = await WednesdayConfirmation.findOne({ userID, semester }).lean();
       if (confirmed) return res.status(400).json({ error: '已最终确认周三社团，无法直接退出，请通过社团轮换更改' });
       // 未确认前可自由退出，不限制数量
     }
     await ClubMember.deleteOne({ userID, clubID });
+    // 个人退出：从核心名单移除，但不刷新社团业务更新时间
+    if ((club.coreMemberIDs || []).includes(userID)) {
+      await Club.updateOne(
+        { _id: club._id },
+        { $pull: { coreMemberIDs: userID } }
+      );
+    }
     res.json({ success: true });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -880,6 +938,8 @@ app.put('/api/clubs/:id/core-members', async (req, res) => {
     
     if (action === 'add') {
       if (list.includes(targetUserID)) return res.status(400).json({ error: '已是核心人员' });
+      const approvedMember = await ClubMember.findOne({ userID: targetUserID, clubID: club._id, status: 'approved' });
+      if (!approvedMember) return res.status(400).json({ error: '只能将已加入本社团的成员设为核心人员' });
       list.push(targetUserID);
     } else {
       if (club.founderID === targetUserID) return res.status(400).json({ error: '不能移除创建者' });
@@ -949,14 +1009,14 @@ app.post('/api/clubs/:id/transfer-founder', async (req, res) => {
     // 先 -1：原创建者转交后自动退出社团
     await ClubMember.deleteOne({ userID: oldFounderID, clubID: club._id });
 
-    // 再 +1：若目标用户不是成员，加入为新创建者
-    if (needsAdd) {
-      if (existingMember && existingMember.status === 'rejected') {
-        existingMember.status = 'approved';
-        await existingMember.save();
-      } else {
-        await ClubMember.create({ userID: targetUserID, clubID: club._id, status: 'approved' });
-      }
+    // 再 +1：目标用户无论 pending/rejected/不存在，一律确保为 approved
+    existingMember = await ClubMember.findOne({ userID: targetUserID, clubID: club._id });
+    if (existingMember) {
+      existingMember.status = 'approved';
+      existingMember.previousClubID = null;
+      await existingMember.save();
+    } else {
+      await ClubMember.create({ userID: targetUserID, clubID: club._id, status: 'approved' });
     }
 
     io.emit('notification_update', { userID: targetUserID });
@@ -1044,11 +1104,13 @@ app.put('/api/clubs/:id/update-category-type', async (req, res) => {
     }
     
     if (intro !== undefined) club.intro = String(intro || '').trim();
-    
+
+    touchClubActivity(club);
     await club.save();
     
     const clubObj = club.toObject();
     clubObj.id = club._id.toString();
+    clubObj.lastActivityAt = getClubLastActivityAt(clubObj);
     res.json({ success: true, club: clubObj });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1086,10 +1148,12 @@ app.put('/api/clubs/:id/update-info', async (req, res) => {
       club.capacity = val;
     }
 
+    touchClubActivity(club);
     await club.save();
 
     const clubObj = club.toObject();
     clubObj.id = club._id.toString();
+    clubObj.lastActivityAt = getClubLastActivityAt(clubObj);
     res.json({ success: true, club: clubObj });
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -1102,6 +1166,7 @@ app.post('/api/clubs/register', async (req, res) => {
     if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己报名' });
     const club = await Club.findById(clubID);
     if (!club) return res.status(404).json({ error: '社团不存在' });
+    if (club.status !== 'approved') return res.status(400).json({ error: '社团未通过审核，暂不可报名' });
 
     // 检查是否已有 pending 或 approved：若有则不允许重复申请；仅被拒绝后可再次申请
     const existing = await ClubMember.findOne({ userID, clubID: club._id });
@@ -1160,23 +1225,44 @@ app.post('/api/clubs/register', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 当前学期：春季 3月1日-7月15日，秋季 9月1日-次年1月31日
-function getCurrentSemester() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1; // 1-12
-  if (m >= 9) return `${y}-fall`;      // 9月1日-12月31日 → 当年秋季
-  if (m === 1) return `${y - 1}-fall`; // 1月1日-1月31日 → 上年秋季
-  // 2月-8月 → 当年春季（含 3/1-7/15 春季 + 2月与 7/16-8/31 沿用春季计数）
-  return `${y}-spring`;
-}
-
 const ROTATION_LIMIT_PER_SEMESTER = 5;
 
-function getSemesterLabel(semester) {
-  if (!semester) return '本学期';
-  const [y, type] = String(semester).split('-');
-  return type === 'fall' ? `${y}年秋季` : `${y}年春季`;
+/** 轮换申请被拒绝时：回到旧社团，并退还本学期轮换次数 */
+async function restoreClubMembershipAfterRotateReject(memberDoc) {
+  if (!memberDoc) return false;
+  const prevId = memberDoc.previousClubID;
+  if (!prevId) {
+    memberDoc.status = 'rejected';
+    memberDoc.previousClubID = null;
+    await memberDoc.save();
+    return false;
+  }
+  const userID = memberDoc.userID;
+  const prevClub = await Club.findById(prevId);
+  // 若旧社仍在，把本条记录改回旧社 approved；否则标记 rejected
+  if (prevClub) {
+    // 避免与旧社残留记录冲突
+    await ClubMember.deleteMany({
+      userID,
+      clubID: prevId,
+      _id: { $ne: memberDoc._id }
+    });
+    memberDoc.clubID = prevId;
+    memberDoc.status = 'approved';
+    memberDoc.previousClubID = null;
+    await memberDoc.save();
+  } else {
+    memberDoc.status = 'rejected';
+    memberDoc.previousClubID = null;
+    await memberDoc.save();
+  }
+  const semester = getCurrentSemester();
+  const record = await SemesterRotation.findOne({ userID, semester });
+  if (record && record.count > 0) {
+    record.count -= 1;
+    await record.save();
+  }
+  return true;
 }
 
 app.get('/api/clubs/rotation-quota', async (req, res) => {
@@ -1224,8 +1310,9 @@ app.post('/api/clubs/rotate', async (req, res) => {
     if (!isRotationAllowed()) return res.status(403).json({ error: '不在轮换时间' });
     const { userID, newClubID, oldClubID, operatorID } = req.body;
     if (!operatorID || operatorID !== userID) return res.status(403).json({ error: '只能为自己操作' });
-    const members = await ClubMember.find({ userID }).populate('clubID');
-    const wednesdayMembers = members.filter(m => m.clubID && clubHasWednesday(m.clubID.category));
+    // 只把已通过/审核中的算入；已拒绝的社团不占时段、也不能作为被替换对象
+    const members = await ClubMember.find({ userID, status: { $in: ['approved', 'pending'] } }).populate('clubID');
+    const wednesdayMembers = members.filter(m => m.status === 'approved' && m.clubID && clubHasWednesday(m.clubID.category));
     if (wednesdayMembers.length === 0) return res.status(400).json({ error: '请先报名周三社团' });
     let member = null;
     if (oldClubID) {
@@ -1236,8 +1323,17 @@ app.post('/api/clubs/rotate', async (req, res) => {
     }
     const newClub = await Club.findById(newClubID);
     if (!newClub) return res.status(404).json({ error: '新社团不存在' });
+    if (newClub.status !== 'approved') return res.status(400).json({ error: '只能轮换到已通过审核的社团' });
     if (!clubHasWednesday(newClub.category)) return res.status(400).json({ error: '只能轮换到周三或周三+日常社团' });
     if (member.clubID && member.clubID._id.toString() === newClubID) return res.status(400).json({ error: '已是该社团' });
+
+    if (newClub.capacity != null) {
+      const currentCount = await ClubMember.countDocuments({ clubID: newClub._id, status: 'approved' });
+      if (currentCount >= newClub.capacity) {
+        return res.status(400).json({ error: '目标社团人数已满，无法轮换' });
+      }
+    }
+
     const otherWed = wednesdayMembers.filter(m => m !== member);
     const usedBlocks = new Set();
     for (const m of otherWed) {
@@ -1261,17 +1357,37 @@ app.post('/api/clubs/rotate', async (req, res) => {
       return res.status(400).json({ error: `本学期轮换次数已用完（${ROTATION_LIMIT_PER_SEMESTER} 次），无法继续轮换` });
     }
 
+    const oldClubObjectId = member.clubID._id;
+    const oldClubIdStr = oldClubObjectId.toString();
+
+    // 从旧社核心名单移除（轮换后不应继续管理旧社）
+    await Club.updateOne({ _id: oldClubObjectId }, { $pull: { coreMemberIDs: userID } });
+
+    // 若目标社已有该用户记录（曾申请被拒等），先删掉以免唯一索引冲突
+    const existingOnTarget = await ClubMember.findOne({ userID, clubID: newClub._id });
+    if (existingOnTarget && existingOnTarget._id.toString() !== member._id.toString()) {
+      await ClubMember.deleteOne({ _id: existingOnTarget._id });
+    }
+
+    member.previousClubID = oldClubObjectId;
     member.clubID = newClub._id;
     member.status = 'pending';
     await member.save();
     record.count += 1;
     await record.save();
     io.emit('notification_update', { userID: newClub.founderID });
+    (newClub.coreMemberIDs || []).forEach(uid => {
+      if (uid && uid !== newClub.founderID) io.emit('notification_update', { userID: uid });
+    });
     const result = member.toObject();
     result.Club = newClub;
     result.Club.id = newClub._id.toString();
+    result.previousClubID = oldClubIdStr;
     res.json(result);
-  } catch (e) { res.status(500).json({ error: e.message }); }
+  } catch (e) {
+    console.error('社团轮换失败:', e);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // 活动
@@ -1443,8 +1559,20 @@ app.post('/api/activities/register', upload.single('paymentProof'), async (req, 
     // 检查人数是否已满
     const activity = await Activity.findById(activityID);
     if (!activity) return res.status(404).json({ error: '活动不存在' });
+    if (activity.status !== 'approved') return res.status(400).json({ error: '活动未通过审核，暂不可报名' });
     if (activity.isPerformance) {
       return res.status(400).json({ error: '本活动为演出选座报名，请打开活动详情使用选座' });
+    }
+
+    const existingReg = await ActivityRegistration.findOne({
+      activityID: activity._id,
+      userID,
+      status: { $in: ['pending', 'approved'] }
+    });
+    if (existingReg) {
+      return res.status(400).json({
+        error: existingReg.status === 'approved' ? '您已成功报名该活动' : '您已提交报名，请等待审核'
+      });
     }
 
     if (activity.capacity) {
@@ -1458,24 +1586,36 @@ app.post('/api/activities/register', upload.single('paymentProof'), async (req, 
     if (activity.hasFee && !req.file) {
       return res.status(400).json({ error: '该活动需要支付报名费，请上传支付截图' });
     }
-    
+
+    // 被拒绝后再次报名：更新原记录
+    const rejected = await ActivityRegistration.findOne({ activityID: activity._id, userID, status: 'rejected' });
     const regData = {
-      ...req.body,
       activityID: activity._id,
+      userID,
+      name: req.body.name,
+      class: req.body.class,
+      reason: req.body.reason,
+      contact: req.body.contact,
       status: 'pending',
       paymentStatus: activity.hasFee ? (req.file ? 'pending_verification' : 'unpaid') : 'unpaid',
       paymentProof: req.file ? req.file.filename : null
     };
-    
-    const reg = await ActivityRegistration.create(regData);
+    let reg;
+    if (rejected) {
+      Object.assign(rejected, regData);
+      await rejected.save();
+      reg = rejected;
+    } else {
+      reg = await ActivityRegistration.create(regData);
+    }
     const regObj = reg.toObject();
     regObj.id = reg._id.toString();
     res.json(regObj);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 更新活动详情：名称、人数、时间、地点、简介、流程、需求、报名费（仅组织者或管理员）
-app.put('/api/activities/:id/update-info', async (req, res) => {
+// 更新活动详情：名称、人数、时间、地点、简介、流程、需求、报名费、收款码（仅组织者或管理员）
+app.put('/api/activities/:id/update-info', upload.single('paymentQRCode'), async (req, res) => {
   try {
     const { id } = req.params;
     const { userID: operatorID, name, capacity, time, location, description, flow, requirements, hasFee, feeAmount } = req.body;
@@ -1498,6 +1638,11 @@ app.put('/api/activities/:id/update-info', async (req, res) => {
     if (requirements !== undefined) act.requirements = String(requirements || '').trim();
     if (hasFee !== undefined) act.hasFee = hasFee === true || hasFee === 'true';
     if (feeAmount !== undefined) act.feeAmount = String(feeAmount || '').trim() || null;
+    if (req.file) act.paymentQRCode = req.file.filename;
+
+    if (act.hasFee && !act.paymentQRCode) {
+      return res.status(400).json({ error: '开启报名费后请上传收款二维码' });
+    }
 
     if (capacity !== undefined) {
       const val = capacity === '' || capacity == null ? null : Number(capacity);
@@ -2193,7 +2338,8 @@ app.post('/api/audit/approve', async (req, res) => {
     if (type === 'club') { 
       const item = await Club.findById(id); 
       if (!item) return res.status(404).json({ error: '社团不存在' });
-      item.status = status; 
+      item.status = status;
+      if (status === 'approved') touchClubActivity(item);
       await item.save(); 
       targetUserID = item.founderID; 
       // 如果审核通过，创始人自动加入社团
@@ -2219,6 +2365,18 @@ app.post('/api/audit/approve', async (req, res) => {
       // 获取活动信息，检查是否有费用
       const activity = await Activity.findById(item.activityID);
       
+      if (status === 'approved' && activity && activity.capacity) {
+        const currentRegCount = await ActivityRegistration.countDocuments({ activityID: activity._id, status: 'approved' });
+        if (currentRegCount >= activity.capacity) {
+          item.status = 'rejected';
+          await item.save();
+          targetUserID = item.userID;
+          await Notification.create({ userID: targetUserID, type: 'status_update', relatedID: id.toString() });
+          io.emit('notification_update', { userID: targetUserID });
+          return res.status(400).json({ error: '该活动人数已满，已自动拒绝' });
+        }
+      }
+
       item.status = status;
       
       // 如果活动有费用，更新支付状态
@@ -2270,19 +2428,53 @@ app.post('/api/audit/approve', async (req, res) => {
       if (!item) return res.status(404).json({ error: '申请不存在' });
       const club = item.clubID;
       if (!club) return res.status(404).json({ error: '社团不存在' });
-      // 若点击通过但社团人数已满，则自动拒绝
       let finalStatus = status;
+      let autoRejectReason = '';
+
       if (status === 'approved' && club.capacity != null) {
         const currentCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
-        if (currentCount >= club.capacity) finalStatus = 'rejected';
+        if (currentCount >= club.capacity) {
+          finalStatus = 'rejected';
+          autoRejectReason = '该社团人数已满，已自动拒绝';
+        }
       }
-      item.status = finalStatus; 
-      await item.save(); 
+      if (finalStatus === 'approved' && clubHasWednesday(club.category)) {
+        const applicant = await User.findOne({ userID: item.userID }).select('role').lean();
+        if (!applicant || applicant.role !== 'super_admin') {
+          const otherMems = await ClubMember.find({
+            userID: item.userID,
+            status: 'approved',
+            _id: { $ne: item._id }
+          }).populate('clubID').lean();
+          const usedBlocks = new Set();
+          for (const om of otherMems) {
+            if (!om.clubID || !clubHasWednesday(om.clubID.category)) continue;
+            (om.clubID.blocks || []).forEach(b => usedBlocks.add(b));
+          }
+          const newBlocks = club.blocks || [];
+          if (newBlocks.some(b => usedBlocks.has(b))) {
+            finalStatus = 'rejected';
+            autoRejectReason = '与该成员其他周三社团时间重叠，已自动拒绝';
+          } else if (usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
+            finalStatus = 'rejected';
+            autoRejectReason = '该成员周三时段已满，已自动拒绝';
+          }
+        }
+      }
+
       targetUserID = item.userID;
-      if (finalStatus === 'rejected' && status === 'approved') {
+      if (finalStatus === 'approved') {
+        item.status = 'approved';
+        item.previousClubID = null;
+        await item.save();
+      } else {
+        await restoreClubMembershipAfterRotateReject(item);
+      }
+
+      if (autoRejectReason) {
         await Notification.create({ userID: targetUserID, type: 'status_update', relatedID: id.toString() });
         io.emit('notification_update', { userID: targetUserID });
-        return res.status(400).json({ error: '该社团人数已满，已自动拒绝' });
+        return res.status(400).json({ error: autoRejectReason });
       }
     }
     await Notification.create({ userID: targetUserID, type: 'status_update', relatedID: id.toString() });
@@ -2318,20 +2510,60 @@ app.post('/api/audit/approve-batch', async (req, res) => {
           const isFounder = club.founderID === operatorID;
           const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
           if (!isAdmin && !isFounder && !isCoreMember) continue;
-          // 计算当前已通过人数，若已满则拒绝
-          const currentCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
-          const finalStatus = (club.capacity != null && currentCount >= club.capacity) ? 'rejected' : status;
-          item.status = finalStatus;
-          await item.save();
+
+          let finalStatus = status;
+          if (status === 'approved' && club.capacity != null) {
+            const currentCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
+            if (currentCount >= club.capacity) finalStatus = 'rejected';
+          }
+          if (finalStatus === 'approved' && clubHasWednesday(club.category)) {
+            const applicant = await User.findOne({ userID: item.userID }).select('role').lean();
+            if (!applicant || applicant.role !== 'super_admin') {
+              const otherMems = await ClubMember.find({
+                userID: item.userID,
+                status: 'approved',
+                _id: { $ne: item._id }
+              }).populate('clubID').lean();
+              const usedBlocks = new Set();
+              for (const om of otherMems) {
+                if (!om.clubID || !clubHasWednesday(om.clubID.category)) continue;
+                (om.clubID.blocks || []).forEach(b => usedBlocks.add(b));
+              }
+              const newBlocks = club.blocks || [];
+              if (newBlocks.some(b => usedBlocks.has(b)) || usedBlocks.size + newBlocks.length > WEDNESDAY_BLOCK_LIMIT) {
+                finalStatus = 'rejected';
+              }
+            }
+          }
+
+          if (finalStatus === 'approved') {
+            item.status = 'approved';
+            item.previousClubID = null;
+            await item.save();
+            successCount++;
+          } else {
+            const wasFull = status === 'approved' && finalStatus === 'rejected';
+            await restoreClubMembershipAfterRotateReject(item);
+            if (wasFull) rejectedCount++;
+          }
           await Notification.create({ userID: item.userID, type: 'status_update', relatedID: id.toString() });
           io.emit('notification_update', { userID: item.userID });
-          if (finalStatus === 'approved') successCount++;
-          else if (finalStatus === 'rejected' && club.capacity != null && currentCount >= club.capacity) rejectedCount++;
         } else if (type === 'activityReg') {
           const item = await ActivityRegistration.findById(id);
           if (!item || item.status !== 'pending') continue;
           const activity = await Activity.findById(item.activityID);
           if (!activity || activity.organizerID !== operatorID) continue;
+          if (status === 'approved' && activity.capacity) {
+            const currentRegCount = await ActivityRegistration.countDocuments({ activityID: activity._id, status: 'approved' });
+            if (currentRegCount >= activity.capacity) {
+              item.status = 'rejected';
+              await item.save();
+              await Notification.create({ userID: item.userID, type: 'status_update', relatedID: id.toString() });
+              io.emit('notification_update', { userID: item.userID });
+              rejectedCount++;
+              continue;
+            }
+          }
           item.status = status;
           if (activity && activity.hasFee && status === 'approved') {
             item.paymentStatus = item.paymentProof ? 'paid' : 'unpaid';
@@ -2522,8 +2754,10 @@ app.get('/api/notifications/:userID', async (req, res) => {
       if (regCount > 0 || perfSeatPending > 0) hasAuditTasks = true;
     }
 
-    // 社团创建者任务 (成员加入审核)
-    const myClubs = await Club.find({ founderID: user.userID });
+    // 社团创建者或核心成员任务 (成员加入审核)
+    const myClubs = await Club.find({
+      $or: [{ founderID: user.userID }, { coreMemberIDs: user.userID }]
+    });
     const myClubIDs = myClubs.map(c => c._id);
     if (myClubIDs.length > 0) {
       const joinCount = await ClubMember.countDocuments({ clubID: { $in: myClubIDs }, status: 'pending' });
@@ -2655,7 +2889,7 @@ app.get('/api/admin/users-club-selections', async (req, res) => {
     const result = allUsers.map(u => {
       const myMembers = members.filter(m => m.userID === u.userID && m.clubID);
       const wednesdayClubs = myMembers.filter(m => clubHasWednesday(m.clubID.category)).map(m => ({ id: m.clubID._id.toString(), name: m.clubID.name }));
-      const dailyClubs = myMembers.filter(m => m.clubID.category === 'daily').map(m => ({ id: m.clubID._id.toString(), name: m.clubID.name }));
+      const dailyClubs = myMembers.filter(m => m.clubID.category === 'daily' || m.clubID.category === 'both').map(m => ({ id: m.clubID._id.toString(), name: m.clubID.name }));
       return {
         userID: u.userID,
         name: u.name || '',
@@ -2984,7 +3218,7 @@ app.get('/api/clubs/:id/members', async (req, res) => {
   }
 });
 
-// 社长/创建人踢出成员（仅创建者或核心成员可操作）
+// 社长/创建人移出成员（仅创建者或核心成员可操作）
 app.post('/api/clubs/:id/kick-member', async (req, res) => {
   try {
     const { id } = req.params;
@@ -3000,18 +3234,143 @@ app.post('/api/clubs/:id/kick-member', async (req, res) => {
     const isFounder = club.founderID === operatorID;
     const isCoreMember = (club.coreMemberIDs || []).includes(operatorID);
     const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
-    if (!isFounder && !isCoreMember && !isAdmin) return res.status(403).json({ error: '仅社长、核心成员或管理员可踢出成员' });
+    if (!isFounder && !isCoreMember && !isAdmin) return res.status(403).json({ error: '仅社长、核心成员或管理员可移出成员' });
 
-    if (targetUserID === club.founderID) return res.status(400).json({ error: '不能踢出社长本人' });
+    if (targetUserID === club.founderID) return res.status(400).json({ error: '不能移出社长本人' });
 
     const member = await ClubMember.findOne({ userID: targetUserID, clubID: club._id, status: 'approved' });
     if (!member) return res.status(404).json({ error: '该用户不是本社团成员' });
 
     await ClubMember.deleteOne({ userID: targetUserID, clubID: club._id });
+    // 同步从核心成员名单移除（个人移出不刷新社团业务更新时间）
+    if ((club.coreMemberIDs || []).includes(targetUserID)) {
+      await Club.updateOne(
+        { _id: club._id },
+        { $pull: { coreMemberIDs: targetUserID } }
+      );
+    }
     io.emit('notification_update', { userID: targetUserID });
     res.json({ success: true });
   } catch (e) {
-    console.error('踢出成员失败:', e);
+    console.error('移出成员失败:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 学期社员重置：除社长外全体回到自由人（创建者 / admin / super_admin）
+// 会刷新社团业务更新时间；个人自行退出不会刷新
+app.post('/api/clubs/:id/reset-members', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { operatorID } = req.body;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+
+    const club = await Club.findById(id);
+    if (!club) return res.status(404).json({ error: '社团不存在' });
+    if (club.status !== 'approved') return res.status(400).json({ error: '仅已通过审核的社团可执行社员重置' });
+
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+
+    const isFounder = club.founderID === operatorID;
+    const isAdmin = operator.role === 'admin' || operator.role === 'super_admin';
+    if (!isFounder && !isAdmin) {
+      return res.status(403).json({ error: '仅社团创建者或管理员可执行学期社员重置' });
+    }
+    if (!club.founderID) return res.status(400).json({ error: '社团缺少创建者，无法重置' });
+
+    const allMembers = await ClubMember.find({ clubID: club._id }).lean();
+    const removedUserIDs = allMembers
+      .map(m => m.userID)
+      .filter(uid => uid && uid !== club.founderID);
+
+    await ClubMember.deleteMany({
+      clubID: club._id,
+      userID: { $ne: club.founderID }
+    });
+
+    // 确保社长仍为 approved 成员
+    await ClubMember.findOneAndUpdate(
+      { userID: club.founderID, clubID: club._id },
+      { userID: club.founderID, clubID: club._id, status: 'approved' },
+      { upsert: true, new: true }
+    );
+
+    club.coreMemberIDs = [club.founderID];
+    touchClubActivity(club);
+    await club.save();
+
+    removedUserIDs.forEach(uid => io.emit('notification_update', { userID: uid }));
+    io.emit('club_members_reset', { clubID: id, lastActivityAt: club.lastActivityAt });
+
+    res.json({
+      success: true,
+      message: '已完成学期社员重置，除社长外成员均已回到自由人',
+      removedCount: removedUserIDs.length,
+      lastActivityAt: club.lastActivityAt,
+      memberCount: 1
+    });
+  } catch (e) {
+    console.error('学期社员重置失败:', e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 管理员：按业务更新时间从早到晚列出社团（用于清理本学期不再开展的社团）
+app.get('/api/admin/clubs/by-activity', async (req, res) => {
+  try {
+    const { operatorID } = req.query;
+    if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
+    const operator = await User.findOne({ userID: operatorID });
+    if (!operator) return res.status(401).json({ error: '用户不存在' });
+    if (operator.role !== 'admin' && operator.role !== 'super_admin') {
+      return res.status(403).json({ error: '仅管理员可查看' });
+    }
+
+    const currentSemester = getCurrentSemester();
+    const clubs = await Club.find({ status: 'approved' }).lean();
+    const founderIDs = [...new Set(clubs.map(c => c.founderID).filter(Boolean))];
+    const founders = founderIDs.length
+      ? await User.find({ userID: { $in: founderIDs } }).select('userID name class').lean()
+      : [];
+    const founderMap = new Map(founders.map(u => [u.userID, u]));
+
+    const result = await Promise.all(clubs.map(async (club) => {
+      const lastActivityAt = getClubLastActivityAt(club);
+      const activitySemester = lastActivityAt ? getCurrentSemester(lastActivityAt) : null;
+      const isPastSemester = isClubActivityFromPastSemester(club);
+      const memberCount = await ClubMember.countDocuments({ clubID: club._id, status: 'approved' });
+      const founder = club.founderID ? founderMap.get(club.founderID) : null;
+      return {
+        id: club._id.toString(),
+        name: club.name || '',
+        category: club.category || 'wednesday',
+        founderID: club.founderID || '',
+        founderName: founder?.name || null,
+        founderClass: founder?.class || null,
+        memberCount,
+        lastActivityAt,
+        activitySemester,
+        activitySemesterLabel: activitySemester ? getSemesterLabel(activitySemester) : '未知',
+        isPastSemesterActivity: isPastSemester,
+        canAdminDissolve: isPastSemester
+      };
+    }));
+
+    result.sort((a, b) => {
+      const ta = a.lastActivityAt ? new Date(a.lastActivityAt).getTime() : 0;
+      const tb = b.lastActivityAt ? new Date(b.lastActivityAt).getTime() : 0;
+      if (ta !== tb) return ta - tb; // 从早到晚
+      return getClubSortKey(a.name).localeCompare(getClubSortKey(b.name));
+    });
+
+    res.json({
+      currentSemester,
+      currentSemesterLabel: getSemesterLabel(currentSemester),
+      clubs: result
+    });
+  } catch (e) {
+    console.error('获取社团更新列表失败:', e);
     res.status(500).json({ error: e.message });
   }
 });
@@ -3210,12 +3569,7 @@ app.get('/api/clubs/:id/attendance-sessions/:sessionId/export', async (req, res)
 
 // ---------- 场地申请与排期 ----------
 function getCurrentSemesterForVenue() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  if (m >= 9) return `${y}-fall`;
-  if (m === 1) return `${y - 1}-fall`;
-  return `${y}-spring`;
+  return getCurrentSemester();
 }
 
 app.get('/api/clubs/:id/venue-requests', async (req, res) => {
@@ -3366,21 +3720,43 @@ app.delete('/api/clubs/:id', async (req, res) => {
     const club = await Club.findById(id);
     if (!club) return res.status(404).json({ error: '社团不存在' });
     
-    // 检查权限：仅社团创建者可解散（super_admin 也只能解散自己创建的社团，防止误操作）
     const user = await User.findOne({ userID });
     if (!user) return res.status(401).json({ error: '用户不存在' });
     
     const isFounder = club.founderID === userID;
-    if (!isFounder) {
-      return res.status(403).json({ error: '只有社团创建者可以解散此社团' });
+    const isAdmin = user.role === 'admin' || user.role === 'super_admin';
+
+    if (isFounder) {
+      // 创建者可随时解散自己的社团
+    } else if (isAdmin) {
+      // 管理员仅可解散「业务更新时间不在本学期」的社团（上学期及更早未续更）
+      if (!isClubActivityFromPastSemester(club)) {
+        return res.status(403).json({
+          error: '该社团本学期仍有更新记录，管理员不可直接解散。若确认不再开展，请先由创建者解散，或等待其更新时间进入上学期后再处理。'
+        });
+      }
+    } else {
+      return res.status(403).json({ error: '只有社团创建者或管理员（针对上学期未更新社团）可以解散' });
     }
     
     // 删除所有成员记录（成员回到自由人身份）
+    const memberUserIDs = (await ClubMember.find({ clubID: club._id }).select('userID').lean()).map(m => m.userID);
     await ClubMember.deleteMany({ clubID: club._id });
+
+    // 清理关联数据，避免解散后残留点名/场地记录
+    const attendanceSessions = await ClubAttendanceSession.find({ clubID: club._id }).select('_id').lean();
+    const sessionIds = attendanceSessions.map(s => s._id);
+    if (sessionIds.length) {
+      await ClubAttendanceRecord.deleteMany({ sessionID: { $in: sessionIds } });
+      await ClubAttendanceSession.deleteMany({ _id: { $in: sessionIds } });
+    }
+    await ClubVenueRequest.deleteMany({ clubID: club._id });
+    await ClubVenueSchedule.deleteMany({ clubID: club._id });
     
     // 删除社团
     await club.deleteOne();
     
+    memberUserIDs.forEach(uid => io.emit('notification_update', { userID: uid }));
     io.emit('club_deleted', { clubID: id });
     res.json({ success: true, message: '社团已解散' });
   } catch (e) {
@@ -3394,6 +3770,22 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`Backend running on port ${PORT}`);
   console.log(`Environment PORT: ${process.env.PORT || 'not set'}`);
   console.log(`MongoDB连接状态: ${mongoose.connection.readyState === 1 ? '已连接' : '连接中...'}`);
+
+  // 旧社团补齐业务更新时间，避免个人进退误判为「社团仍在开展」
+  (async () => {
+    try {
+      const missing = await Club.find({
+        $or: [{ lastActivityAt: { $exists: false } }, { lastActivityAt: null }]
+      }).select('_id updatedAt createdAt').lean();
+      for (const c of missing) {
+        const at = c.updatedAt || c.createdAt || new Date();
+        await Club.updateOne({ _id: c._id }, { $set: { lastActivityAt: at } });
+      }
+      if (missing.length) console.log(`已为 ${missing.length} 个社团补齐 lastActivityAt`);
+    } catch (e) {
+      console.error('补齐 lastActivityAt 失败:', e.message);
+    }
+  })();
 });
 
 

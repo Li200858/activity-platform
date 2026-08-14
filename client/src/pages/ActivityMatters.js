@@ -69,6 +69,8 @@ function ActivityMatters({ user }) {
   const [activitySearchFocused, setActivitySearchFocused] = useState(false);
   const [editingActivity, setEditingActivity] = useState(false);
   const [editActivityForm, setEditActivityForm] = useState({ name: '', capacity: '', time: '', location: '', description: '', flow: '', requirements: '', hasFee: false, feeAmount: '' });
+  const [editPaymentQRCode, setEditPaymentQRCode] = useState(null);
+  const [registerSubmitting, setRegisterSubmitting] = useState(false);
 
   useEffect(() => {
     fetchActivities();
@@ -369,12 +371,14 @@ function ActivityMatters({ user }) {
 
   const handleRegister = async (e) => {
     e.preventDefault();
+    if (registerSubmitting) return;
     try {
       // 如果活动有费用但未上传支付截图，提示错误
       if (selectedActivity.hasFee && !paymentProof) {
         alert(t('activity.errNeedFeeProof'));
         return;
       }
+      setRegisterSubmitting(true);
       
       const formData = new FormData();
       formData.append('activityID', selectedActivity.id);
@@ -407,6 +411,8 @@ function ActivityMatters({ user }) {
       fetchActivities(); // 刷新活动列表以更新人数显示
     } catch (err) {
       alert(err.response?.data?.error || t('activity.regFail'));
+    } finally {
+      setRegisterSubmitting(false);
     }
   };
 
@@ -423,19 +429,31 @@ function ActivityMatters({ user }) {
   const handleUpdateActivity = async () => {
     if (!selectedActivity?.id) return;
     try {
-      const res = await api.put(`/activities/${selectedActivity.id}/update-info`, {
-        userID: user.userID,
-        name: editActivityForm.name,
-        capacity: editActivityForm.capacity === '' ? null : editActivityForm.capacity,
-        time: editActivityForm.time,
-        location: editActivityForm.location,
-        description: editActivityForm.description,
-        flow: editActivityForm.flow,
-        requirements: editActivityForm.requirements,
-        hasFee: editActivityForm.hasFee,
-        feeAmount: editActivityForm.feeAmount
+      if (editActivityForm.hasFee && !editPaymentQRCode && !selectedActivity.paymentQRCode) {
+        alert(isEn ? 'Please upload a payment QR code when enabling fees' : '开启报名费后请上传收款二维码');
+        return;
+      }
+      const data = new FormData();
+      data.append('userID', user.userID);
+      data.append('name', editActivityForm.name || '');
+      data.append('capacity', editActivityForm.capacity === '' || editActivityForm.capacity == null ? '' : String(editActivityForm.capacity));
+      data.append('time', editActivityForm.time || '');
+      data.append('location', editActivityForm.location || '');
+      data.append('description', editActivityForm.description || '');
+      data.append('flow', editActivityForm.flow || '');
+      data.append('requirements', editActivityForm.requirements || '');
+      data.append('hasFee', editActivityForm.hasFee ? 'true' : 'false');
+      data.append('feeAmount', editActivityForm.feeAmount || '');
+      if (editPaymentQRCode) data.append('paymentQRCode', editPaymentQRCode);
+
+      const API_BASE = process.env.REACT_APP_API_URL
+        ? `${process.env.REACT_APP_API_URL}/api`
+        : 'http://localhost:5001/api';
+      const res = await axios.put(`${API_BASE}/activities/${selectedActivity.id}/update-info`, data, {
+        headers: { 'Content-Type': 'multipart/form-data' }
       });
       setEditingActivity(false);
+      setEditPaymentQRCode(null);
       const updated = res.data?.activity;
       if (updated) setSelectedActivity({ ...selectedActivity, ...updated, currentRegCount: selectedActivity.currentRegCount });
       fetchActivities();
@@ -540,6 +558,7 @@ function ActivityMatters({ user }) {
                           {t('activity.perfSeatTag')}
                         </span>
                       )}
+                      {act.organizerID !== user.userID && (
                       <button 
                         onClick={() => {
                           if (act.isPerformance) openPerformanceBook(act);
@@ -564,6 +583,7 @@ function ActivityMatters({ user }) {
                           ? t('common.full')
                           : (act.isPerformance ? t('activity.chooseSeatRegister') : t('activity.register'))}
                       </button>
+                      )}
                       {/* 参与人员按钮 - 仅组织者和管理员可见 */}
                       {(act.organizerID === user.userID || user.role === 'admin' || user.role === 'super_admin') && (
                         <button 
@@ -1165,6 +1185,7 @@ function ActivityMatters({ user }) {
                 <button
                   onClick={() => {
                     setEditingActivity(true);
+                    setEditPaymentQRCode(null);
                     setEditActivityForm({
                       name: selectedActivity.name || '',
                       capacity: selectedActivity.capacity != null ? String(selectedActivity.capacity) : '',
@@ -1294,9 +1315,27 @@ function ActivityMatters({ user }) {
                     </label>
                   </div>
                   {editActivityForm.hasFee && (
-                    <div>
-                      <label className="text-xs font-bold text-gray-600 mb-1 block">{t('activity.feeAmountEdit')}</label>
-                      <input value={editActivityForm.feeAmount} onChange={e => setEditActivityForm({ ...editActivityForm, feeAmount: e.target.value })} placeholder={t('activity.feeExamplePlaceholder')} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">{t('activity.feeAmountEdit')}</label>
+                        <input value={editActivityForm.feeAmount} onChange={e => setEditActivityForm({ ...editActivityForm, feeAmount: e.target.value })} placeholder={t('activity.feeExamplePlaceholder')} className="w-full border rounded-lg px-3 py-2 text-sm" />
+                      </div>
+                      <div>
+                        <label className="text-xs font-bold text-gray-600 mb-1 block">{isEn ? 'Payment QR code' : '收款二维码'}</label>
+                        {(selectedActivity.paymentQRCode || editPaymentQRCode) && (
+                          <p className="text-xs text-emerald-700 mb-1">
+                            {editPaymentQRCode
+                              ? (isEn ? `New file: ${editPaymentQRCode.name}` : `已选新文件：${editPaymentQRCode.name}`)
+                              : (isEn ? 'Current QR code is on file' : '已有收款码，可重新上传替换')}
+                          </p>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => setEditPaymentQRCode(e.target.files?.[0] || null)}
+                          className="w-full text-sm"
+                        />
+                      </div>
                     </div>
                   )}
                   <div className="flex gap-2 pt-2">

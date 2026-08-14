@@ -251,14 +251,51 @@ function ClubMatters({ user }) {
   };
 
   const handleKickMember = async (targetUserID) => {
-    if (!membersClubId || !window.confirm('确定要将该成员踢出社团吗？')) return;
+    if (!membersClubId || !window.confirm(isEn ? 'Remove this member from the club?' : '确定将该成员移出社团吗？')) return;
     try {
       await api.post(`/clubs/${membersClubId}/kick-member`, { targetUserID, operatorID: user.userID });
-      alert('已踢出');
+      alert(isEn ? 'Member removed' : '已移出社团');
       fetchMembers(membersClubId);
     } catch (err) {
-      alert(err.response?.data?.error || '踢出失败');
+      alert(err.response?.data?.error || (isEn ? 'Failed to remove' : '移出失败'));
     }
+  };
+
+  const handleResetMembers = async (clubId) => {
+    if (!clubId) return;
+    const msg = isEn
+      ? 'Reset all members except the founder for the new semester? Everyone else will become free to rejoin any club. This counts as a club update.'
+      : '确定执行「学期社员重置」吗？除社长外，所有成员将回到自由人身份，可重新选择社团。此操作会计入社团上次更新时间。';
+    if (!window.confirm(msg)) return;
+    try {
+      const res = await api.post(`/clubs/${clubId}/reset-members`, { operatorID: user.userID });
+      alert(res.data?.message || (isEn ? 'Members reset' : '已完成学期社员重置'));
+      await fetchClubs();
+      await fetchMyClub();
+      await fetchManagedClubs();
+      if (membersClubId === clubId) fetchMembers(clubId);
+      if (selectedClubDetail?.id === clubId) {
+        const updated = (await api.get('/clubs/approved')).data?.find(c => c.id === clubId);
+        if (updated) setSelectedClubDetail(updated);
+      }
+    } catch (err) {
+      alert(err.response?.data?.error || (isEn ? 'Reset failed' : '社员重置失败'));
+    }
+  };
+
+  const formatLastActivity = (value) => {
+    if (!value) return isEn ? 'Unknown' : '暂无记录';
+    const d = new Date(value);
+    if (Number.isNaN(d.getTime())) return isEn ? 'Unknown' : '暂无记录';
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  };
+
+  const canResetClubMembers = (club) => {
+    if (!user) return false;
+    if (user.role === 'admin' || user.role === 'super_admin') return true;
+    if (!club) return false;
+    return club.founderID === user.userID;
   };
 
   const searchUsersForAddMember = async () => {
@@ -587,7 +624,7 @@ function ClubMatters({ user }) {
                               }`}>
                                 {m.status === 'approved' ? (isEn ? 'Joined' : '已加入') : m.status === 'rejected' ? (isEn ? 'Rejected' : '被拒绝') : (isEn ? 'Pending' : '审核中')}
                               </span>
-                              {!wednesdayConfirmed && (
+                              {!wednesdayConfirmed && c?.founderID !== user.userID && (
                                 <button onClick={() => handleLeaveClub(c?.id)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
                               )}
                             </span>
@@ -639,7 +676,9 @@ function ClubMatters({ user }) {
                     {myDailyClubs.map(m => (
                       <li key={m.Club?.id || m.clubID} className="flex justify-between items-center bg-gray-50 rounded-xl px-4 py-2">
                         <span className="font-bold text-gray-800"><TranslatableContent>{m.Club?.name || (isEn ? 'Unknown' : '未知')}</TranslatableContent></span>
-                        <button onClick={() => handleLeaveClub(m.Club?.id || m.clubID)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
+                        {m.Club?.founderID !== user.userID && (
+                          <button onClick={() => handleLeaveClub(m.Club?.id || m.clubID)} className="px-3 py-1 bg-red-50 text-red-600 rounded-lg text-xs font-black hover:bg-red-600 hover:text-white">{t('club.leave')}</button>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -734,13 +773,17 @@ function ClubMatters({ user }) {
                                 {club.blocks?.length ? ` · ${club.blocks.map(b => b.replace('block', 'B')).join('、')}` : ''}
                               </span>
                             ) : null}
+                            <span className={`text-[10px] px-2 py-0.5 rounded font-bold ${club.isPastSemesterActivity ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700'}`}>
+                              {isEn ? 'Updated' : '上次更新'}：{formatLastActivity(club.lastActivityAt)}
+                              {club.isPastSemesterActivity ? (isEn ? ' · prior term' : ' · 非本学期') : (isEn ? ' · this term' : ' · 本学期')}
+                            </span>
                           </div>
                           {club.intro && (
                             <p className="text-xs text-gray-500 line-clamp-2 mt-2">{club.intro}</p>
                           )}
                         </div>
                       </div>
-                      <div className="flex gap-2 mt-4">
+                      <div className="flex gap-2 mt-4 flex-wrap">
                         <button 
                           onClick={() => setSelectedClubDetail(club)}
                           className="bg-blue-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-blue-700 transition-all"
@@ -767,6 +810,14 @@ function ClubMatters({ user }) {
                             className="bg-green-600 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition-all"
                           >
                             {t('club.downloadExcel')}
+                          </button>
+                        )}
+                        {canResetClubMembers(club) && (
+                          <button
+                            onClick={() => handleResetMembers(club.id)}
+                            className="bg-orange-500 text-white text-xs px-4 py-2 rounded-lg font-bold hover:bg-orange-600 transition-all"
+                          >
+                            {isEn ? 'Semester member reset' : '学期社员重置'}
                           </button>
                         )}
                         {/* 解散社团按钮 - 仅创建者可见（super_admin 也只能解散自己创建的） */}
@@ -841,21 +892,27 @@ function ClubMatters({ user }) {
               })()}
             </div>
             {(() => {
-              const dailyClubs = clubs.filter(c => c.category === 'daily' || c.category === 'both');
+              const dailyClubs = clubs.filter(c => c.category === 'daily');
               const wednesdayClubs = clubs.filter(c => c.category === 'wednesday' || c.category === 'both');
               const wednesdayUsedBlocks = () => {
                 const used = new Set();
                 myWednesdayClubs.forEach(m => { const c = m.Club || m.clubID; (c?.blocks || []).forEach(b => used.add(b)); });
                 return used;
               };
+              const isAlreadyIn = (club) => {
+                const inWed = myWednesdayClubs.some(m => (m.Club?.id || m.clubID) === club.id || (m.Club?._id || '').toString() === club.id);
+                const inDaily = myDailyClubs.some(m => (m.Club?.id || m.clubID) === club.id || (m.Club?._id || '').toString() === club.id);
+                return inWed || inDaily;
+              };
               const canJoinWednesday = (club) => {
-                const alreadyIn = myWednesdayClubs.some(m => (m.Club?.id || m.clubID) === club.id);
-                if (alreadyIn) return false;
+                if (wednesdayConfirmed) return false;
+                if (isAlreadyIn(club)) return false;
                 const used = wednesdayUsedBlocks();
                 const blocks = club.blocks || [];
                 if (blocks.some(b => used.has(b))) return false;
                 return used.size + blocks.length <= 4;
               };
+              const canJoinDaily = (club) => !isAlreadyIn(club);
               const renderClubRow = (club, canJoin) => (
                 <div key={club.id} className="bg-gray-50 p-5 rounded-2xl flex justify-between items-center border border-gray-100 hover:border-green-200 transition-colors">
                   <button onClick={() => setSelectedClubDetail(club)} className="text-left group flex-1">
@@ -876,7 +933,15 @@ function ClubMatters({ user }) {
                         : 'bg-green-600 text-white hover:scale-105 active:scale-95 shadow-green-100'
                     }`}
                   >
-                    {club.capacity && club.memberCount >= club.capacity ? t('common.full') : !canJoin ? t('club.alreadyOrConflict') : t('club.join')}
+                    {club.capacity && club.memberCount >= club.capacity
+                      ? t('common.full')
+                      : isAlreadyIn(club)
+                        ? (isEn ? 'Joined' : '已加入')
+                        : !canJoin
+                          ? (wednesdayConfirmed && (club.category === 'wednesday' || club.category === 'both')
+                            ? (isEn ? 'Use rotation' : '请用轮换')
+                            : t('club.alreadyOrConflict'))
+                          : t('club.join')}
                   </button>
                 </div>
               );
@@ -885,7 +950,7 @@ function ClubMatters({ user }) {
                   <div>
                     <h3 className="text-sm font-black text-gray-500 uppercase tracking-wider mb-2">{t('club.dailyClubs')}</h3>
                     {dailyClubs.length === 0 ? <p className="text-center py-6 text-gray-400 italic">{t('club.noDaily')}</p> : (
-                      <div className="grid gap-4">{dailyClubs.map(c => renderClubRow(c, true))}</div>
+                      <div className="grid gap-4">{dailyClubs.map(c => renderClubRow(c, canJoinDaily(c)))}</div>
                     )}
                   </div>
                   <div>
@@ -1351,6 +1416,14 @@ function ClubMatters({ user }) {
                   <>{t('club.creator')}：{selectedClubDetail.founderName || (isEn ? 'Unknown' : '未知')}{selectedClubDetail.founderEnglishName && ` / ${selectedClubDetail.founderEnglishName}`}</>
                 )}
               </p>
+              <p className={`text-xs mt-2 font-bold ${selectedClubDetail.isPastSemesterActivity ? 'text-amber-700' : 'text-emerald-700'}`}>
+                {isEn ? 'Last club update' : '社团上次更新'}：{formatLastActivity(selectedClubDetail.lastActivityAt)}
+                <span className="font-medium text-gray-500">
+                  {selectedClubDetail.isPastSemesterActivity
+                    ? (isEn ? ' (not updated this semester — may no longer be running)' : '（非本学期更新，可能本学期不再开展）')
+                    : (isEn ? ' (updated this semester)' : '（本学期有更新）')}
+                </span>
+              </p>
               {selectedClubDetail.founderID === user.userID && (
                 <div className="mt-4 p-4 bg-amber-50 rounded-xl border border-amber-100">
                   <p className="text-xs font-bold text-amber-800 mb-2">{t('club.transferFounder')}</p>
@@ -1707,7 +1780,7 @@ function ClubMatters({ user }) {
                 </div>
 
               {Object.entries(selectedClubDetail).map(([key, value]) => {
-                if (['id', 'founderID', 'status', 'memberCount', 'createdAt', 'updatedAt', 'coreMembers', 'coreMemberIDs'].includes(key)) return null;
+                if (['id', 'founderID', 'status', 'memberCount', 'createdAt', 'updatedAt', 'lastActivityAt', 'activitySemester', 'isPastSemesterActivity', 'coreMembers', 'coreMemberIDs', 'founderName', 'founderEnglishName', 'founderClass', 'actualLeaderName'].includes(key)) return null;
                 
                 const labels = {
                   name: '社团名称', intro: '社团介绍', content: '活动内容', location: '活动地点',
@@ -1765,11 +1838,17 @@ function ClubMatters({ user }) {
                   const isWednesday = selectedClubDetail.category === 'wednesday' || selectedClubDetail.category === 'both';
                   const usedBlocks = new Set();
                   myWednesdayClubs.forEach(m => { const c = m.Club || m.clubID; (c?.blocks || []).forEach(b => usedBlocks.add(b)); });
-                  const alreadyIn = myWednesdayClubs.some(m => (m.Club || m.clubID)?.id === selectedClubDetail.id);
+                  const alreadyInWed = myWednesdayClubs.some(m => (m.Club || m.clubID)?.id === selectedClubDetail.id);
+                  const alreadyInDaily = myDailyClubs.some(m => (m.Club || m.clubID)?.id === selectedClubDetail.id);
+                  const alreadyIn = alreadyInWed || alreadyInDaily;
                   const blocks = selectedClubDetail.blocks || [];
                   const noOverlap = !blocks.some(b => usedBlocks.has(b));
                   const canAdd = usedBlocks.size + blocks.length <= 4;
-                  const canJoin = isWednesday ? !alreadyIn && noOverlap && canAdd : true;
+                  const canJoin = alreadyIn
+                    ? false
+                    : isWednesday
+                      ? (!wednesdayConfirmed && noOverlap && canAdd)
+                      : true;
                   const full = selectedClubDetail.capacity && selectedClubDetail.memberCount >= selectedClubDetail.capacity;
                   const disabled = !canJoin || full;
                   return (
@@ -1780,7 +1859,15 @@ function ClubMatters({ user }) {
                         disabled ? 'bg-gray-400 text-white cursor-not-allowed' : 'bg-green-600 text-white hover:bg-green-700 hover:scale-105 active:scale-95'
                       }`}
                     >
-                      {full ? t('common.full') : !canJoin ? t('club.alreadyOrConflict') : t('club.join')}
+                      {full
+                        ? t('common.full')
+                        : alreadyIn
+                          ? (isEn ? 'Joined' : '已加入')
+                          : wednesdayConfirmed && isWednesday
+                            ? (isEn ? 'Use rotation' : '请用轮换')
+                            : !canJoin
+                              ? t('club.alreadyOrConflict')
+                              : t('club.join')}
                     </button>
                   );
                 })()}
@@ -1862,6 +1949,14 @@ function ClubMatters({ user }) {
                     {t('club.downloadExcel')}
                   </button>
                 )}
+                {canResetClubMembers(selectedClubDetail) && (
+                  <button
+                    onClick={() => handleResetMembers(selectedClubDetail.id)}
+                    className="px-6 py-3 bg-orange-500 text-white rounded-2xl font-black hover:bg-orange-600 transition-all"
+                  >
+                    {isEn ? 'Semester member reset' : '学期社员重置'}
+                  </button>
+                )}
                 {/* 解散社团按钮 - 仅创建者可见（super_admin 也只能解散自己创建的） */}
                 {selectedClubDetail.founderID === user.userID && (
                   <button 
@@ -1895,14 +1990,25 @@ function ClubMatters({ user }) {
         const canAddMember = membersClub && user.role === 'super_admin';
         return (
         <div className="bg-white p-4 sm:p-6 rounded-2xl shadow-sm border border-gray-100 w-full min-w-0">
-          <div className="flex justify-between items-center mb-6">
+          <div className="flex justify-between items-center mb-6 gap-3 flex-wrap">
             <h2 className="text-xl font-black text-gray-800">{t('club.participants')} - {members.clubName}</h2>
-            <button 
-              onClick={() => setView('menu')} 
-              className="text-gray-500 underline text-sm font-bold hover:text-blue-600"
-            >
-              {t('common.back')}
-            </button>
+            <div className="flex items-center gap-3">
+              {canResetClubMembers(membersClub) && membersClubId && (
+                <button
+                  type="button"
+                  onClick={() => handleResetMembers(membersClubId)}
+                  className="text-orange-600 text-sm font-bold px-3 py-1.5 rounded-lg bg-orange-50 hover:bg-orange-100"
+                >
+                  {isEn ? 'Semester member reset' : '学期社员重置'}
+                </button>
+              )}
+              <button 
+                onClick={() => setView('menu')} 
+                className="text-gray-500 underline text-sm font-bold hover:text-blue-600"
+              >
+                {t('common.back')}
+              </button>
+            </div>
           </div>
 
           {canAddMember && (
@@ -1972,7 +2078,7 @@ function ClubMatters({ user }) {
                               onClick={() => handleKickMember(m.userID)}
                               className="text-red-600 text-xs font-bold hover:underline"
                             >
-                              踢出
+                              {isEn ? 'Remove' : '移出社团'}
                             </button>
                           )}
                         </td>

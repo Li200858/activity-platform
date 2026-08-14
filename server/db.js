@@ -49,7 +49,9 @@ const ClubSchema = new mongoose.Schema({
   // 改革方案：社团类型与时间板块（仅周三社团使用）
   type: { type: String, enum: ['academic', 'activity'], default: 'activity' },
   blocks: { type: [String], default: [] }, // block1~block4，最多选3个
-  coreMemberIDs: { type: [String], default: [] }
+  coreMemberIDs: { type: [String], default: [] },
+  // 社团“业务更新时间”：仅在修改简介/时间等信息或「学期社员重置」时刷新；个人退出不计入
+  lastActivityAt: { type: Date }
 }, { timestamps: true });
 
 // 活动模型
@@ -86,7 +88,9 @@ const ActivitySchema = new mongoose.Schema({
 const ClubMemberSchema = new mongoose.Schema({
   userID: { type: String, required: true },
   clubID: { type: mongoose.Schema.Types.ObjectId, ref: 'Club', required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' }
+  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  // 轮换时记录旧社团：若新社被拒可回滚，避免「无家可归」
+  previousClubID: { type: mongoose.Schema.Types.ObjectId, ref: 'Club', default: null }
 }, { timestamps: true });
 ClubMemberSchema.index({ userID: 1, clubID: 1 }, { unique: true });
 
@@ -103,6 +107,7 @@ const ActivityRegistrationSchema = new mongoose.Schema({
   paymentStatus: { type: String, enum: ['unpaid', 'paid', 'pending_verification'], default: 'unpaid' }, // 支付状态
   paymentProof: { type: String } // 支付凭证（截图文件名，可选）
 }, { timestamps: true });
+ActivityRegistrationSchema.index({ activityID: 1, userID: 1 });
 
 // 演出活动座位预定（pending=已选待组织者确认付款；approved=已确认；reject 时删除记录释放座位）
 const ActivitySeatReservationSchema = new mongoose.Schema({
