@@ -22,6 +22,8 @@ const UserSchema = new mongoose.Schema({
   userID: { type: String, unique: true, required: true },
   name: { type: String, required: true, unique: true },
   class: { type: String, required: true },
+  // 班级对应的学期（如 2026-fall）；跨学期登录须重新填写班级并更新此字段
+  classSemester: { type: String },
   // 英文名（可选，给外教查看）
   englishName: { type: String },
   role: { type: String, enum: ['user', 'admin', 'super_admin'], default: 'user' },

@@ -16,7 +16,7 @@ const SOCKET_URL = process.env.REACT_APP_API_URL || 'http://localhost:5001';
 const socket = io(SOCKET_URL);
 
 function App() {
-  const { user, login, register, logout, copyID, updateEnglishName, setPin } = useAuth();
+  const { user, authReady, login, register, logout, copyID, updateEnglishName, setPin } = useAuth();
   const { lang, setLang, t, isEn } = useLanguage();
   const [activeTab, setActiveTab] = useState('社团事宜');
   const [hasAuditUnread, setHasAuditUnread] = useState(false);
@@ -148,6 +148,14 @@ function App() {
       alert(err.response?.data?.error || (isEn ? 'Failed' : '操作失败'));
     }
   };
+
+  if (!authReady) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center">
+        <p className="text-gray-400 text-sm">{isEn ? 'Checking semester…' : '正在核对学期…'}</p>
+      </div>
+    );
+  }
 
   if (!user) {
     return <Login onLogin={login} onRegister={register} />;

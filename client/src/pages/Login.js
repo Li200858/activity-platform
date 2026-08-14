@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useLanguage } from '../context/LanguageContext';
 import { api } from '../utils/api';
 
@@ -18,6 +18,13 @@ function Login({ onLogin, onRegister }) {
   const [showRecovery, setShowRecovery] = useState(false);
   const [recovery, setRecovery] = useState({ name: '', class: '', email: '' });
   const [recoveryMessage, setRecoveryMessage] = useState('');
+  const [semesterLabel, setSemesterLabel] = useState('');
+
+  useEffect(() => {
+    api.get('/time')
+      .then(res => setSemesterLabel(res.data?.currentSemesterLabel || ''))
+      .catch(() => setSemesterLabel(''));
+  }, []);
 
   const resetForm = () => {
     setError('');
@@ -36,13 +43,19 @@ function Login({ onLogin, onRegister }) {
           setError(t('login.errorPin'));
           return;
         }
-        await onLogin(name.trim(), userClass.trim(), null, showPassword ? password : undefined, pin.trim(), 'pin');
+        const userData = await onLogin(name.trim(), userClass.trim(), null, showPassword ? password : undefined, pin.trim(), 'pin');
+        if (userData?.classUpdated) {
+          alert(`${t('login.semesterClassUpdated')}${userData.class ? `：${userData.class}` : ''}`);
+        }
       } else {
         if (!name.trim() || !userClass.trim() || !userID.trim()) {
           setError(t('login.errorId'));
           return;
         }
-        await onLogin(name.trim(), userClass.trim(), userID.trim(), showPassword ? password : undefined, undefined, 'id');
+        const userData = await onLogin(name.trim(), userClass.trim(), userID.trim(), showPassword ? password : undefined, undefined, 'id');
+        if (userData?.classUpdated) {
+          alert(`${t('login.semesterClassUpdated')}${userData.class ? `：${userData.class}` : ''}`);
+        }
       }
     } catch (err) {
       const data = err.response?.data;
@@ -164,6 +177,12 @@ function Login({ onLogin, onRegister }) {
         </div>
 
         <h2 className="text-2xl font-bold mb-6 text-center text-gray-800">{t('login.welcomeBack')}</h2>
+        {semesterLabel && (
+          <p className="text-center text-xs text-emerald-700 font-bold mb-3">
+            {isEn ? 'Current term' : '当前学期'}：{semesterLabel}
+          </p>
+        )}
+        <p className="text-center text-xs text-amber-700 mb-4">{t('login.semesterClassHint')}</p>
 
         {redirectMessage && <div className="mb-4 p-3 bg-amber-50 text-amber-800 rounded-lg text-sm border border-amber-200">{redirectMessage}</div>}
         {error && <div className="mb-4 p-3 bg-red-100 text-red-600 rounded-lg text-sm">{error}</div>}

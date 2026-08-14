@@ -10,7 +10,7 @@ const moment = require('moment');
 const { v4: uuidv4 } = require('uuid');
 const XLSX = require('xlsx');
 const { pinyin } = require('pinyin-pro');
-const { findUserByNameAndClassLoose } = require('./classMatch');
+const { findUserByNameAndClassLoose, classesMatch } = require('./classMatch');
 const { isMailConfigured, sendRecoveryIdEmail, sendRecoveryPinEmail } = require('./mail');
 const { seatBookingNamesConflict } = require('./seatNameConflict');
 const { 
@@ -194,6 +194,31 @@ function touchClubActivity(club, when = new Date()) {
   return club;
 }
 
+/** 本学期已确认过班级则必须匹配；新学期则写入用户填写的新班级 */
+function applySemesterClass(user, inputClass) {
+  const current = getCurrentSemester();
+  const c = String(inputClass || '').trim();
+  if (!c) return { error: '请填写班级' };
+  if (user.classSemester === current) {
+    if (!classesMatch(user.class, c)) {
+      return { error: '班级与本学期登记不一致，请填写当前班级' };
+    }
+    return { updated: false };
+  }
+  user.class = c;
+  user.classSemester = current;
+  return { updated: true };
+}
+
+function publicUserPayload(user, extra = {}) {
+  const userObj = user.toObject();
+  userObj.id = user._id.toString();
+  userObj.hasPin = !!(user.pinHash != null && user.pinHash !== '');
+  delete userObj.pinHash;
+  userObj.classSemester = user.classSemester || getCurrentSemester();
+  return { ...userObj, ...extra };
+}
+
 // 服务器时间API（用于检查时间同步；学期等业务一律跟服务器时钟）
 app.get('/api/time', (req, res) => {
   const now = moment();
@@ -224,11 +249,15 @@ app.post('/api/user/register', async (req, res) => {
     const userID = uuidv4().substring(0, 8).toUpperCase();
     const role = (name === '管理员' || (name === '李昌轩' && userClass === 'NEE4')) ? 'super_admin' : 'user';
     const pinHash = (pin && /^\d{4,6}$/.test(String(pin))) ? hashPin(userID, String(pin)) : null;
-    const user = await User.create({ userID, name, class: userClass, role, pinHash });
-    const userObj = user.toObject();
-    userObj.id = user._id.toString();
-    userObj.hasPin = !!pinHash;
-    delete userObj.pinHash;
+    const user = await User.create({
+      userID,
+      name,
+      class: userClass,
+      classSemester: getCurrentSemester(),
+      role,
+      pinHash
+    });
+    const userObj = publicUserPayload(user);
     res.json(userObj);
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
@@ -241,23 +270,25 @@ app.post('/api/user/login', async (req, res) => {
 
     let user = null;
     if (loginMode === 'pin') {
-      // PIN 登录：姓名+班级+PIN，无需 ID
+      // PIN 登录：姓名+PIN（班级在新学期用于更新，本学期须与登记一致）
       const pinTrimmed = pin != null ? String(pin).trim() : '';
       if (!n || !c || !pinTrimmed || !/^\d{4,6}$/.test(pinTrimmed)) return res.status(401).json({ error: '请填写姓名、班级和 4-6 位 PIN' });
-      user = await User.findOne({ name: n, class: c });
-      if (!user) return res.status(401).json({ error: '未找到该用户，请检查姓名和班级' });
+      user = await User.findOne({ name: n });
+      if (!user) return res.status(401).json({ error: '未找到该用户，请检查姓名' });
       if (!user.pinHash) return res.status(401).json({ error: '该账号未设置 PIN，请使用 ID 登录' });
       if (hashPin(user.userID, pinTrimmed) !== user.pinHash) return res.status(401).json({ error: 'PIN 错误' });
     } else {
-      // ID 登录：姓名+班级+ID（loginMode 非 'pin' 时均走此分支）
+      // ID 登录：姓名+ID（班级规则同上）
       const uid = (userID || '').trim();
       if (!uid || !n || !c) return res.status(401).json({ error: '请填写姓名、班级和 ID' });
       user = await User.findOne({ userID: uid });
-      if (!user || user.name !== n || user.class !== c) return res.status(401).json({ error: '信息不匹配' });
+      if (!user || user.name !== n) return res.status(401).json({ error: '信息不匹配' });
       // 若用户已设置 PIN，要求改用 PIN 登录
       if (user.pinHash) return res.status(401).json({ error: '您设置了 PIN，请用 PIN 登录', requirePinLogin: true });
-      // 普通用户若设置了 PIN 会在上面返回；此处为未设置 PIN 的用户，无需验证 PIN
     }
+
+    const classResult = applySemesterClass(user, c);
+    if (classResult.error) return res.status(401).json({ error: classResult.error });
 
     // super_admin 需要额外输入密码
     if (user.role === 'super_admin') {
@@ -271,10 +302,11 @@ app.post('/api/user/login', async (req, res) => {
     user.lastLoginAt = new Date();
     await user.save();
 
-    const userObj = user.toObject();
-    userObj.id = user._id.toString();
-    userObj.hasPin = !!(user.pinHash != null && user.pinHash !== '');
-    delete userObj.pinHash;
+    const userObj = publicUserPayload(user, {
+      classUpdated: !!classResult.updated,
+      currentSemester: getCurrentSemester(),
+      currentSemesterLabel: getSemesterLabel(getCurrentSemester())
+    });
     // 上次登录时间：兼容旧用户（无此字段）及各种格式
     try {
       userObj.lastLoginAt = (prevLoginAt && typeof prevLoginAt.toISOString === 'function') ? prevLoginAt.toISOString() : null;
@@ -3790,6 +3822,14 @@ server.listen(PORT, '0.0.0.0', () => {
         await Club.updateOne({ _id: c._id }, { $set: { lastActivityAt: at } });
       }
       if (missing.length) console.log(`已为 ${missing.length} 个社团补齐 lastActivityAt`);
+      const semester = getCurrentSemester();
+      const classMissing = await User.updateMany(
+        { $or: [{ classSemester: { $exists: false } }, { classSemester: null }, { classSemester: '' }] },
+        { $set: { classSemester: semester } }
+      );
+      if (classMissing.modifiedCount) {
+        console.log(`已为 ${classMissing.modifiedCount} 个用户补齐 classSemester=${semester}（本学期内无需重新登录）`);
+      }
     } catch (e) {
       console.error('补齐 lastActivityAt 失败:', e.message);
     }

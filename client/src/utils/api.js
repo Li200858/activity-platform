@@ -8,13 +8,71 @@ const API_BASE = process.env.REACT_APP_API_URL
 
 export const useAuth = () => {
   const [user, setUser] = useState(null);
+  const [authReady, setAuthReady] = useState(false);
+
+  const logout = () => {
+    setUser(null);
+    localStorage.removeItem('user');
+  };
+
+  const matchesCurrentSemester = (userData, currentSemester) => {
+    if (!userData || !currentSemester) return false;
+    return userData.classSemester === currentSemester;
+  };
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('user');
-    if (savedUser) {
-      setUser(JSON.parse(savedUser));
-    }
+    let cancelled = false;
+    (async () => {
+      const savedUser = localStorage.getItem('user');
+      if (!savedUser) {
+        if (!cancelled) setAuthReady(true);
+        return;
+      }
+      let userData = null;
+      try { userData = JSON.parse(savedUser); } catch (_) { userData = null; }
+      if (!userData) {
+        localStorage.removeItem('user');
+        if (!cancelled) setAuthReady(true);
+        return;
+      }
+      try {
+        const timeRes = await axios.get(`${API_BASE}/time`);
+        const current = timeRes.data?.currentSemester;
+        if (current && !matchesCurrentSemester(userData, current)) {
+          localStorage.removeItem('user');
+          if (!cancelled) setUser(null);
+        } else if (!cancelled) {
+          setUser(userData);
+        }
+      } catch (_) {
+        // 对时失败时先恢复本地登录，避免服务器短暂不可用时全体被踢出
+        if (!cancelled) setUser(userData);
+      } finally {
+        if (!cancelled) setAuthReady(true);
+      }
+    })();
+    return () => { cancelled = true; };
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    const checkSemester = async () => {
+      try {
+        const timeRes = await axios.get(`${API_BASE}/time`);
+        const current = timeRes.data?.currentSemester;
+        if (current && user.classSemester !== current) {
+          logout();
+        }
+      } catch (_) { /* ignore */ }
+    };
+    const timer = setInterval(checkSemester, 60000);
+    const onVis = () => { if (document.visibilityState === 'visible') checkSemester(); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [user]);
 
   // 注册逻辑：姓名、班级，可选 PIN（4-6 位防冒充）
   const register = async (name, userClass, pin) => {
@@ -43,11 +101,6 @@ export const useAuth = () => {
     return userData;
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('user');
-  };
-
   const updateEnglishName = async (englishName) => {
     if (!user || !user.userID) return;
     const res = await axios.put(`${API_BASE}/user/english-name`, { userID: user.userID, englishName, operatorID: user.userID });
@@ -73,7 +126,7 @@ export const useAuth = () => {
     }
   };
 
-  return { user, login, register, logout, copyID, updateEnglishName, setPin };
+  return { user, authReady, login, register, logout, copyID, updateEnglishName, setPin };
 };
 
 // 创建axios实例，配置超时时间
