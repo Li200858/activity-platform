@@ -308,7 +308,7 @@ function App() {
                       {u.userID && <p className="text-[10px] text-blue-500 font-mono mt-2 bg-blue-50 inline-block px-2 py-0.5 rounded-md">ID: {u.userID}</p>}
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                    {user.role === 'super_admin' && u.name !== user.name && (
+                    {((user.role === 'super_admin' && u.role === 'admin') || ((user.role === 'admin' || user.role === 'super_admin') && u.role === 'user')) && u.userID !== user.userID && u.role !== 'super_admin' && (
                       <button 
                         onClick={() => handleSetRole(u.userID, u.role === 'user' ? 'admin' : 'user')} 
                         className={`text-[10px] px-4 py-2 rounded-xl font-black transition-all ${u.role === 'user' ? 'bg-red-50 text-red-600 hover:bg-red-600 hover:text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}

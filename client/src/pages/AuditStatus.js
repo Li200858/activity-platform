@@ -606,8 +606,8 @@ function AuditStatus({ user, onAnnouncementsChange }) {
             </div>
           )}
 
-          {/* 超级管理员特有的用户管理 */}
-          {user.role === 'super_admin' && (
+          {/* 管理员权限分配：admin 可授予 admin；super_admin 还可取消权限、删除账户 */}
+          {(user.role === 'admin' || user.role === 'super_admin') && (
             <div className="mt-12 pt-8 border-t-2 border-dashed border-gray-100">
               <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center gap-2">
                 {t('audit.adminRoleAssign')}
@@ -652,10 +652,12 @@ function AuditStatus({ user, onAnnouncementsChange }) {
                       {u.role === 'user' && (
                         <>
                           <button onClick={() => handleSetRole(u.userID, 'admin')} className="text-xs bg-white border border-red-200 text-red-600 px-4 py-2 rounded-lg font-bold hover:bg-red-600 hover:text-white transition-all">{t('app.setAdmin')}</button>
-                          <button onClick={() => handleDeleteUser(u.userID, u.name)} className="text-xs bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg font-bold hover:bg-red-50 hover:text-red-600 transition-all">删除账户</button>
+                          {user.role === 'super_admin' && (
+                            <button onClick={() => handleDeleteUser(u.userID, u.name)} className="text-xs bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg font-bold hover:bg-red-50 hover:text-red-600 transition-all">删除账户</button>
+                          )}
                         </>
                       )}
-                      {u.role === 'admin' && (
+                      {u.role === 'admin' && user.role === 'super_admin' && (
                         <button onClick={() => handleSetRole(u.userID, 'user')} className="text-xs bg-white border border-gray-200 text-gray-600 px-4 py-2 rounded-lg font-bold hover:bg-gray-600 hover:text-white transition-all">{t('app.cancelRole')}</button>
                       )}
                     </div>
@@ -664,6 +666,7 @@ function AuditStatus({ user, onAnnouncementsChange }) {
               </div>
 
               {/* super_admin：全部用户列表（姓名、班级、ID） */}
+              {user.role === 'super_admin' && (
               <div className="mt-8 pt-6 border-t border-gray-100">
                 <h4 className="text-sm font-bold text-gray-700 mb-3">
                   {isEn ? 'All users' : '全部用户列表'}
@@ -697,6 +700,7 @@ function AuditStatus({ user, onAnnouncementsChange }) {
                   </div>
                 )}
               </div>
+              )}
             </div>
           )}
 

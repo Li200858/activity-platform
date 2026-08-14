@@ -2781,13 +2781,13 @@ app.post('/api/notifications/read', async (req, res) => {
   } catch (e) { res.status(500).json({ error: e.message }); }
 });
 
-// 管理员搜索用户（用于权限分配，仅 super_admin）
+// 管理员搜索用户（用于权限分配，admin 与 super_admin 均可）
 app.get('/api/admin/users/search', async (req, res) => {
   try {
     const { query, operatorID } = req.query;
     if (!operatorID) return res.status(400).json({ error: '缺少 operatorID' });
     const op = await User.findOne({ userID: operatorID });
-    if (!op || op.role !== 'super_admin') return res.status(403).json({ error: '仅超级管理员可搜索用户' });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '仅管理员可搜索用户' });
     if (!query || query.trim() === '') {
       return res.json([]);
     }
@@ -2839,10 +2839,18 @@ app.post('/api/admin/set-role', async (req, res) => {
     const { operatorID, targetUserID, role } = req.body;
     if (!operatorID || !targetUserID || !role) return res.status(400).json({ error: '缺少参数' });
     const op = await User.findOne({ userID: operatorID });
-    if (!op || op.role !== 'super_admin') return res.status(403).json({ error: '权限不足' });
+    if (!op || (op.role !== 'admin' && op.role !== 'super_admin')) return res.status(403).json({ error: '权限不足' });
     const target = await User.findOne({ userID: targetUserID });
     if (!target) return res.status(404).json({ error: '用户不存在' });
+    if (targetUserID === operatorID) return res.status(400).json({ error: '不能修改自己的角色' });
+    if (target.role === 'super_admin') return res.status(403).json({ error: '不能修改超级管理员角色' });
     if (!['user', 'admin'].includes(role)) return res.status(400).json({ error: '角色只能是 user 或 admin' });
+    // 普通 admin 只能给普通用户授予 admin，不能取消他人权限
+    if (op.role === 'admin') {
+      if (role !== 'admin' || target.role !== 'user') {
+        return res.status(403).json({ error: '普通管理员只能将普通用户设为管理员' });
+      }
+    }
     target.role = role;
     await target.save();
     res.json({ success: true });
